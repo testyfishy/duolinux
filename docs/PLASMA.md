@@ -79,12 +79,18 @@ Two practical rules, learned the hard way:
 
 ## Battery indicator
 
-One indicator only: the standalone `org.kde.plasma.battery` applet on the panel with
-`showPercentage=true`, and `org.kde.plasma.battery` in the system tray's `hiddenItems`.
+One indicator only: **Plasma's own tray battery**. The standalone
+`org.kde.plasma.battery` applet was removed (`out/remote/drop-panel-battery.py`), because it produced
+a second battery readout next to the tray's.
 
-The tray's own copy cannot be used instead: in its compact panel form it shows the icon only, with
-the percentage in the popup. It is the same plugin, but only the standalone applet renders the
-number in the panel.
+What to expect from the stock tray item: it shows the battery icon in the panel, with the percentage
+in its popup/tooltip. It does *not* render the number in the compact panel form, even with
+`showPercentage=true` - that setting only affects the popup. The `hiddenItems` key did not hide it
+either, so it was dropped rather than left as misleading configuration.
+
+The trade-off, stated plainly: the panel no longer shows a percentage. The alternative was a
+standalone applet showing icon + percentage, at the cost of a duplicate indicator. The default KDE
+tray was chosen.
 
 ## Scripts
 
@@ -92,6 +98,7 @@ number in the panel.
 - `out/remote/apply-stock-panel.sh` - the whole restore + verification pass.
 - `out/remote/repair-panel.py` - repair applet sections merged by hand-editing (missing tray).
 - `out/remote/repair-and-verify.sh` - stop, repair, restart, verify tray and CPU.
+- `out/remote/drop-panel-battery.py` - remove the duplicate battery applet, keep the tray one.
 - `out/remote/diag-sycoca.sh` - reproduce the rebuild storm and name the cause.
 - `out/remote/fix-tray-and-measure.sh` - re-add the tray, order the panel, measure idle CPU.
 
