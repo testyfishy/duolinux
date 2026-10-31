@@ -1,38 +1,101 @@
 #!/usr/bin/env python3
-"""Keep the panel backlight above a floor.
+"""Backlight policy for the two-panel handheld.
 
-Plasma's brightness slider (which arrived with powerdevil) allows 0, which turns
-the backlight completely off -- on a handheld with no external keyboard that
-means losing the machine until you SSH in. This clamps the value to a readable
-minimum while still allowing dimming down to it.
+Two separate problems, both from the way Plasma exposes brightness here:
+
+1. The built-in screen's slider writes *both* backlight devices, so dimming the
+   top panel also dims the bottom one. The bottom panel is pinned to full.
+2. The DP-1 slider is a DRM property rather than a backlight, and allows 0. A 0
+   there can leave the display unusable, and recovering needs a modeset the
+   driver may reject. DP-1 is therefore clamped away from 0.
+
+sysfs is polled cheaply every 2 s; the DP-1 value only exists in kscreen-doctor's
+text output, so that is checked less often.
 """
 import glob
 import pathlib
+import re
+import subprocess
 import time
 
-FLOOR_PERCENT = 12
-POLL = 5.0
+FLOOR_PERCENT = 12          # DSI-1 may not go darker than this
+DP1_MIN_PERCENT = 25        # DP-1 is clamped back to this
+DP1_RESTORE_PERCENT = 70
+POLL = 2.0
+DP1_CHECK_EVERY = 10.0
+
+BOTTOM = "serial0-0"        # the DP-1 panel's backlight device
+TOP = "backlight"           # the DSI-1 panel
 
 
-def clamp() -> None:
-    for device in glob.glob("/sys/class/backlight/*"):
-        try:
-            maximum = int(pathlib.Path(device, "max_brightness").read_text())
-            current = int(pathlib.Path(device, "brightness").read_text())
-        except (OSError, ValueError):
-            continue
-        floor = max(1, maximum * FLOOR_PERCENT // 100)
-        if current < floor:
-            try:
-                pathlib.Path(device, "brightness").write_text(str(floor))
-                print(f"brightness-guard: {device} {current} -> {floor}", flush=True)
-            except OSError:
-                pass
+def env() -> dict:
+    import os
+    return {**os.environ,
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+            "WAYLAND_DISPLAY": "wayland-0"}
+
+
+def set_backlight(name: str, value: int) -> None:
+    try:
+        pathlib.Path(f"/sys/class/backlight/{name}/brightness").write_text(str(value))
+    except OSError:
+        pass
+
+
+def pin_bottom() -> None:
+    """Keep the bottom panel at full brightness regardless of the top slider."""
+    try:
+        maximum = int(pathlib.Path(f"/sys/class/backlight/{BOTTOM}/max_brightness").read_text())
+        current = int(pathlib.Path(f"/sys/class/backlight/{BOTTOM}/brightness").read_text())
+    except (OSError, ValueError):
+        return
+    if current != maximum:
+        set_backlight(BOTTOM, maximum)
+
+
+def clamp_top() -> None:
+    try:
+        maximum = int(pathlib.Path(f"/sys/class/backlight/{TOP}/max_brightness").read_text())
+        current = int(pathlib.Path(f"/sys/class/backlight/{TOP}/brightness").read_text())
+    except (OSError, ValueError):
+        return
+    floor = max(1, maximum * FLOOR_PERCENT // 100)
+    if current < floor:
+        set_backlight(TOP, floor)
+        print(f"brightness-guard: top {current} -> {floor}", flush=True)
+
+
+def check_dp1() -> None:
+    """Clamp the DP-1 DRM brightness away from 0."""
+    try:
+        out = subprocess.run(["kscreen-doctor", "-o"], env=env(),
+                             capture_output=True, text=True, timeout=8).stdout
+    except (OSError, subprocess.SubprocessError):
+        return
+    out = re.sub(r"\x1b\[[0-9;]*m", "", out)
+    block = out.split("DP-1", 1)
+    if len(block) < 2:
+        return
+    match = re.search(r"set to (\d+)%", block[1])
+    if not match:
+        return
+    value = int(match.group(1))
+    if value < DP1_MIN_PERCENT:
+        print(f"brightness-guard: DP-1 {value}% -> {DP1_RESTORE_PERCENT}%", flush=True)
+        subprocess.run(["kscreen-doctor",
+                        f"output.DP-1.brightness.{DP1_RESTORE_PERCENT}"],
+                       env=env(), capture_output=True, timeout=8)
 
 
 def main() -> None:
+    last_dp1 = 0.0
     while True:
-        clamp()
+        pin_bottom()
+        clamp_top()
+        now = time.time()
+        if now - last_dp1 >= DP1_CHECK_EVERY:
+            last_dp1 = now
+            check_dp1()
         time.sleep(POLL)
 
 
