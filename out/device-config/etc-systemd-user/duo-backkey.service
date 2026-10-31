@@ -1,0 +1,12 @@
+[Unit]
+Description=Back button toggles the on-screen keyboard
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/duo-backkey
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

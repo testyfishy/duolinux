@@ -1,0 +1,18 @@
+[General]
+rules=vboard
+count=1
+
+[vboard]
+Description=vboard on the bottom panel
+Enabled=true
+wmclass=io.github.archisman-panigrahi.vboard
+wmclassmatch=1
+wmclasscomplete=false
+above=true
+aboverule=2
+acceptfocus=false
+acceptfocusrule=2
+skiptaskbar=true
+skiptaskbarrule=2
+skippager=true
+skippagerrule=2

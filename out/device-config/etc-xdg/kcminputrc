@@ -1,0 +1,5 @@
+[Libinput][0][0][Himax Touchscreen]
+OutputName=DSI-1
+
+[Libinput][0][0][generic ft5x06 (a0)]
+OutputName=DP-1

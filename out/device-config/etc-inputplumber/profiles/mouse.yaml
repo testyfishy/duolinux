@@ -1,0 +1,27 @@
+version: 1
+kind: DeviceProfile
+name: Duo mouse mode
+mapping:
+  - name: Right stick pointer
+    source_event:
+      gamepad:
+        axis:
+          name: RightStick
+    target_events:
+      - mouse:
+          motion:
+            speed_pps: 900
+  - name: R1 left click
+    source_event:
+      gamepad:
+        button: RightBumper
+    target_events:
+      - mouse:
+          button: Left
+  - name: L1 right click
+    source_event:
+      gamepad:
+        button: LeftBumper
+    target_events:
+      - mouse:
+          button: Right

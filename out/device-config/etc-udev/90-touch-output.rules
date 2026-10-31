@@ -1,0 +1,4 @@
+# Each touchscreen belongs to one physical panel. libinput exposes this as
+# WL_OUTPUT; KWin falls back to it when kcminputrc has no OutputName.
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="Himax Touchscreen", ENV{WL_OUTPUT}="DSI-1"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="generic ft5x06 (a0)", ENV{WL_OUTPUT}="DP-1"

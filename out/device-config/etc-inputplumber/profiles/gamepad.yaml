@@ -1,0 +1,222 @@
+version: 1
+kind: DeviceProfile
+name: Default
+mapping:
+- name: LeftTop
+  source_event:
+    gamepad:
+      button: LeftTop
+  target_events:
+  - gamepad:
+      button: LeftPaddle1
+- name: RightTop
+  source_event:
+    gamepad:
+      button: RightTop
+  target_events:
+  - gamepad:
+      button: RightPaddle1
+- name: Keyboard
+  source_event:
+    gamepad:
+      button: Keyboard
+  target_events:
+  - gamepad:
+      button: Guide
+  - gamepad:
+      button: North
+- name: QuickAccess2
+  source_event:
+    gamepad:
+      button: QuickAccess2
+  target_events:
+  - gamepad:
+      button: Screenshot
+- name: Left Dial Counter-clockwise
+  source_event:
+    gamepad:
+      dial:
+        name: LeftStickDial
+        direction: counter-clockwise
+  target_events:
+  - keyboard: KeyVolumeDown
+- name: Left Dial Clockwise
+  source_event:
+    gamepad:
+      dial:
+        name: LeftStickDial
+        direction: clockwise
+  target_events:
+  - keyboard: KeyVolumeUp
+- name: Right Dial Counter-clockwise
+  source_event:
+    gamepad:
+      dial:
+        name: RightStickDial
+        direction: counter-clockwise
+  target_events:
+  - keyboard: KeyBrightnessDown
+- name: Right Dial Clockwise
+  source_event:
+    gamepad:
+      dial:
+        name: RightStickDial
+        direction: clockwise
+  target_events:
+  - keyboard: KeyBrightnessUp
+- name: Duo dpad_down
+  source_event:
+    gamepad:
+      button: DPad Down
+  target_events:
+  - gamepad:
+      button: DPad Down
+  - keyboard: KeyDown
+- name: Duo dpad_left
+  source_event:
+    gamepad:
+      button: DPad Left
+  target_events:
+  - gamepad:
+      button: DPad Left
+  - keyboard: KeyLeft
+- name: Duo dpad_right
+  source_event:
+    gamepad:
+      button: DPad Right
+  target_events:
+  - gamepad:
+      button: DPad Right
+  - keyboard: KeyRight
+- name: Duo dpad_up
+  source_event:
+    gamepad:
+      button: DPad Up
+  target_events:
+  - gamepad:
+      button: DPad Up
+  - keyboard: KeyUp
+- name: Duo l1
+  source_event:
+    gamepad:
+      button: Left Bumper
+  target_events:
+  - gamepad:
+      button: Left Bumper
+- name: Duo r1
+  source_event:
+    gamepad:
+      button: Right Bumper
+  target_events:
+  - gamepad:
+      button: Right Bumper
+- name: Duo a
+  source_event:
+    gamepad:
+      button: East
+  target_events:
+  - gamepad:
+      button: East
+  - keyboard: KeyEnter
+- name: Duo b
+  source_event:
+    gamepad:
+      button: South
+  target_events:
+  - gamepad:
+      button: South
+  - keyboard: KeyEsc
+- name: Duo dpad_down
+  source_event:
+    gamepad:
+      button: DPadDown
+  target_events:
+  - gamepad:
+      button: DPadDown
+  - keyboard: KeyDown
+- name: Duo dpad_left
+  source_event:
+    gamepad:
+      button: DPadLeft
+  target_events:
+  - gamepad:
+      button: DPadLeft
+  - keyboard: KeyLeft
+- name: Duo dpad_right
+  source_event:
+    gamepad:
+      button: DPadRight
+  target_events:
+  - gamepad:
+      button: DPadRight
+  - keyboard: KeyRight
+- name: Duo dpad_up
+  source_event:
+    gamepad:
+      button: DPadUp
+  target_events:
+  - gamepad:
+      button: DPadUp
+  - keyboard: KeyUp
+- name: Duo l1
+  source_event:
+    gamepad:
+      button: LeftBumper
+  target_events:
+  - gamepad:
+      button: LeftBumper
+  - mouse:
+      button: Left
+- name: Duo l3
+  source_event:
+    gamepad:
+      button: LeftStick
+  target_events:
+  - gamepad:
+      button: LeftStick
+- name: Duo r1
+  source_event:
+    gamepad:
+      button: RightBumper
+  target_events:
+  - gamepad:
+      button: RightBumper
+  - mouse:
+      button: Right
+- name: Duo r3
+  source_event:
+    gamepad:
+      button: RightStick
+  target_events:
+  - gamepad:
+      button: RightStick
+- name: Duo select
+  source_event:
+    gamepad:
+      button: Select
+  target_events:
+  - gamepad:
+      button: Select
+- name: Duo start
+  source_event:
+    gamepad:
+      button: Start
+  target_events:
+  - gamepad:
+      button: Start
+- name: Duo x
+  source_event:
+    gamepad:
+      button: North
+  target_events:
+  - gamepad:
+      button: North
+  - keyboard: KeySpace
+- name: Duo y
+  source_event:
+    gamepad:
+      button: West
+  target_events:
+  - gamepad:
+      button: West
+  - keyboard: KeyCompose

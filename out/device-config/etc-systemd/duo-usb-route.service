@@ -1,0 +1,12 @@
+[Unit]
+Description=Route internet over the USB link to the PC
+After=duo-usb-gadget.service network.target
+Wants=duo-usb-gadget.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/duo-usb-route
+
+[Install]
+WantedBy=multi-user.target

@@ -32,6 +32,7 @@ duo.json
 !/out/overlay/
 !/out/abl/
 !/out/patch/
+!/out/device-config/
 !/out/*.sh
 !/out/README.txt
 cache/

@@ -1,0 +1,14 @@
+[Unit]
+Description=DuoLinux gamepad to keyboard mapper
+After=multi-user.target
+Wants=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/duo-inputd
+Restart=always
+RestartSec=2
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target
