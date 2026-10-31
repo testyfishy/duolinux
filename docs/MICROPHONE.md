@@ -1,64 +1,96 @@
 # Microphone
 
-**Status: the microphone is powered but still not clocked.** The supply route in
-the device tree works; the PDM clock does not exist yet.
+**Status: not working. The mic is powered, its pins are muxed, and both LPASS
+macros' DMIC clocks can be enabled by hand; the data line still returns only
+slow DC wander, never audio.** Everything below is measured on the device.
 
-## What is confirmed working
+## What works
 
-- The DMIC pair on gpio127/128 is **TX DMIC2/DMIC3** and is powered from the
-  WCD9370's **MIC BIAS1**. Stock Android routes exactly that, and after adding
-  the same route to our tree the capture changed from *exact digital zeros* to
-  real signal - so the microphone is now powered and producing a data line.
-- Capture path, gain, resampling and the transcription server all work.
+- The microphone is **powered**: after routing `"TX DMIC2", "MIC BIAS1"` in the
+  device tree the capture changed from exact digital zeros to real signal, so
+  the WCD9370's MIC BIAS1 is switching on.
+- The pads are muxed correctly: `gpio127` = `dmic1_clk`, `gpio128` =
+  `dmic1_data` (pair 1 = TX DMIC2/DMIC3), confirmed in
+  `/sys/kernel/debug/pinctrl/500000.pinctrl/pinmux-pins` during capture.
+- The capture path itself is healthy: `hw:0,2` opens, the decimator runs
+  (TX macro `0x0400` goes `0x04` → `0x24` while streaming), gain is 84, and
+  transcription works on any clip that contains speech.
 
-## What is still broken
+## What is wrong
 
-The data is garbage because there is no valid PDM clock.
+The data line carries no PDM data. Measured via `/dev/mem` MMIO:
 
-| Evidence | Value |
+| Register | Idle | During capture | Meaning |
+|---|---|---|---|
+| TX `0x0400` (DEC0 path) | `0x04` | `0x24` | decimator genuinely running |
+| TX `0x00C0/0x00C4` (DMIC clock) | `0x0E` | `0x0E` | never programmed by mainline |
+| TX `0x00C4` bit 0 | — | never sets, even written as `1` | **read-only status, not an enable** |
+| VA `0x0000` (MCLK) | `0x1` | `0x1` | VA macro clocked |
+| VA `0x0084/0x0088` (DMIC clock) | `0x00` → written `0x09` | stays `0x09` | clock enabled by hand, no effect |
+
+With the VA DMIC clocks *and* both macros' MCLK running, a 1 kHz tone at full
+speaker level still yields `rms ~3000` with **2 zero crossings per second** —
+i.e. a slow DC wander, not audio. Real speech is hundreds to thousands.
+
+## What Android does (from the vendor's own binaries)
+
+The Android partitions are intact on the eMMC and were used as the reference:
+
+- `vendor_dlkm` (a logical partition inside `super`) mounts read-only at
+  offset `0x128300000` and contains the vendor modules with **full symbols**.
+- `bolero_cdc_dlkm.ko` has `bolero_dmic_clk_enable`. Its `.rodata` tables map
+  DMIC index → register and enable bit:
+
+  | Table | Values |
+  |---|---|
+  | register | `0x3084, 0x3088, 0x308c, 0x3090` |
+  | enable bit | `1, 2, 4, 8` |
+
+  i.e. the **VA macro's** `DMIC0..3_CTL` block, not the TX macro's.
+- The vendor tx-macro node carries `qcom,tx-dmic-sample-rate = <0x249f00>`
+  (2.4 MHz), so the intended PDM clock is MCLK/4 from the 9.6 MHz MCLK.
+- The vendor's own `mixer_paths.xml` selects the mic with `TX DMIC MUX0=DMIC2`
+  (path `handset-dmic-endfire`), matching our mux.
+
+## Dead ends (do not repeat)
+
+- Writing the TX macro divider: the field takes (`0x08`) but bit 0 never
+  latches and the register is reset to `0x0E` at stream start.
+- Poking the VA macro DMIC registers and MCLK: values stick, audio does not
+  appear.
+- Sweeping `TX DMIC MUX0` across DMIC0..7 with the clock programmed: all zero
+  except the unmuxed pair-0 pad, which floats.
+- The TX macro DMIC clock is *not* an enable bit; the driver's own comment says
+  the default value `0` means DIV2 (4.8 MHz), which is above a PDM mic's limit.
+
+## Next step
+
+Get the vendor audio-kernel source (its debug strings name
+`vendor/qcom/opensource/audio-kernel/legacy/asoc/...`), read
+`bolero_dmic_clk_enable` and its callers, and find the register or clock-gate
+sequence that actually makes the pad produce a clock. Qualcomm's audio-kernel is
+public, so this needs no hardware access.
+
+## Tooling this produced
+
+| Tool | Purpose |
 |---|---|
-| `CDC_TX_TOP_CSR_SWR_DMICn_CTL` (0x00C0-0x00CC) | `0x0E` on all four, **never changes** |
-| Switching `TX DEC0 MUX` to SWR_MIC and back | register still `0x0E` |
-| Field [3:1] decode | 7, which is not a valid divider code (valid: 0,2,4,6,8,10) |
-| Vendor device tree | `qcom,dmic-sample-rate = <2400000>` on **va-macro**, and `"TX_AIF1 CAP", "VA_MCLK"` in the routing |
-
-So the TX macro is not the clock source on this board. The vendor clocks the
-DMIC from the **VA macro**, and mainline never runs the VA macro at all: the
-sound card has only `MultiMedia1/2/3`, no VA backend, and
-`va_macro a4a0000.codec: qcom,dmic-sample-rate dt entry missing` in dmesg
-because our DTS omits the property.
-
-A driver patch setting the TX macro divider to DIV4 (2.4 MHz) was tried and
-removed: the write never executes, because the only path that programs that
-register is the DEC mux put-handler, and re-triggering it changes nothing.
-
-## What it will take
-
-Wire a VA capture path, which is a real port rather than a property:
-
-1. Add `qcom,dmic-sample-rate = <2400000>` to the `vamacro` node.
-2. Add a capture DAI link: `qai->q6afedai VA_CODEC_DMA_TX_0` ->
-   `&vamacro`, platform `q6routing`.
-3. A VM capture needs the VA macro's own decimator mux (`VA DMIC MUX0` etc.).
-4. UCM: point the capture device at the new PCM and set `MultiMedia3 Mixer
-   VA_CODEC_DMA_TX_0`.
-
-Steps 1-3 are device-tree work (a new node, so not `fdtput`-able); step 4 is a
-UCM change. The known-good DTB must keep booting, so any rebuilt tree has to be
-tested on the SD card first - see the boot rules in `docs/BUILD.md`.
+| `toolkit/apps/pmem.py` | read/write 32-bit MMIO through `/dev/mem` (no rebuilds) |
+| `toolkit/apps/parse-super.py` | parse super's LP metadata, print partition extents |
+| `toolkit/apps/find-super-fs.py` | locate a filesystem by magic inside the raw partition |
+| `toolkit/apps/disasm-vendor-dmic.sh`, `dump-vendor-dmic-tables.sh` | vendor `bolero` analysis |
+| `toolkit/apps/dmic-*.sh`, `va-*.sh` | the sweeps and probes above |
 
 ## Volume control on this card (affects every test script)
 
 `amixer` cannot touch this card: `cget`/`cset` abort with
 `control.c:427: snd_ctl_elem_info` (rc 134) for every numid except 1, while
-`alsactl` works because it uses `ELEM_READ`. All acceptance tooling therefore
-drives controls through a stored state file (`alsactl store` / edit / `restore`).
+`alsactl` works because it uses `ELEM_READ`. All tooling drives controls through
+a stored state file (`alsactl store` / edit / `restore`).
 
-## Nasty details
+## Other details
 
 - `arecord` on `hw:0,2` gets truncated while PipeWire holds the card; use
-  `pw-record` as `duo` with `XDG_RUNTIME_DIR=/run/user/1000`, and stop it with
+  `pw-record` as `duo` with `XDG_RUNTIME_DIR=/run/user/1000`, stopped with
   SIGINT (`timeout -s INT`) so the WAV header is finalised.
-- The capture gain is `TX_DEC0 Volume` (0-124; the UCM value is 84).
-- Only `hw:0,2` (MultiMedia3 -> `TX_CODEC_DMA_TX_3`) is routed for capture;
-  `hw:0,0` and `hw:0,1` open and then fail with `EINVAL`.
+- Only `hw:0,2` is routed for capture; `hw:0,0` and `hw:0,1` fail with `EINVAL`.

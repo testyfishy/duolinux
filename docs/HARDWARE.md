@@ -116,23 +116,30 @@ All five rows are measured on the device, not predicted, by driving the control
 through `alsactl` and reading register 05 from both amps. The ACF blob agrees:
 all three of its register sections set register 05 to `0x800B`.
 
-**Verified end to end:** with the control at 1023 both amps report attenuation
-11 and status `0x0311` (PLL locked, clocks stable), and a full-scale 1 kHz tone
-is audible from the speakers.
+**Audible, but far too quiet - open defect.** A full-scale 1 kHz tone at control
+1023 is audible, with both amps reporting attenuation 11 and status `0x0311`
+(PLL locked, clocks stable). It is however much quieter than the same hardware
+in stock Android, so *attenuation 11 is not the end of the story*.
 
-**Comparison with stock Android** (this was the missing step): Android's
-`mixer_paths.xml` contains *no* `SPK_*` or `AW88166` controls at all - the amps
-are driven entirely by its `aw883xx_dlkm.ko`. Disassembling that module shows
-the same arithmetic as upstream mainline:
+What has been ruled out:
 
-```
-real = min(control + vol.min_vol, vol.max_vol);
-```
+- the control mapping (the ladder above tracks the register exactly);
+- PipeWire's sink volume (1.00) and stream volume;
+- the codec's digital volumes (`RX_RX0..2 Digital Volume` = 84 = 0 dB);
+- the speaker switches (`SPK_L/R Speaker Switch` = true, profile "Music");
+- `amixer`, which cannot touch this card at all (see below).
 
-so Android's maximum also lands on attenuation 11. There is no mixer setting
-being left on the table; a loudness difference, if any, would come from the
-vendor's DSP calibration (`aw_cali_svc_cali_run_dsp_vol`, exposed here as the
-`Calib` control), not from the volume control.
+Android is not a volume reference here: its `mixer_paths.xml` contains **no**
+`SPK_*`/`AW88166` controls, and its `aw883xx_dlkm.ko` uses the same
+`min(control + base, max)` arithmetic, so it lands on the same attenuation 11.
+Whatever makes Android louder is therefore *not* a mixer setting - candidates
+are the DSP firmware section / speaker-protection profile applied by the vendor
+HAL, the ACF profile's own gain registers (0x06+), or a boost/Class-H setting
+that mainline's profile load does not apply.
+
+Next step: read `aw_dev_set_volume` and the profile-load code in the vendor
+`aw883xx_dlkm.ko` (it keeps symbols) and compare the full register set it writes
+against what mainline's ACF load writes, at the same volume.
 
 Mute, fade-in and fade-out keep their upstream attenuation semantics: the conversion happens only at
 the ALSA control boundary. An earlier attempt (`fix-aw88166-volume-v2.sh`) put the mapping inside
