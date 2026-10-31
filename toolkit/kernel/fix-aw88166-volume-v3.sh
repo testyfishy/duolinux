@@ -153,6 +153,20 @@ sub(
 							vol_desc->ctl_volume));
 """)
 
+# 7. the driver's own "unset" volume must mean "as loud as the profile allows",
+#    not silence: 0 is now the bottom of the inverted control
+sub(
+"""		vol_desc->ctl_volume = 0;
+""",
+"""		vol_desc->ctl_volume = AW88166_MUTE_VOL;
+""")
+
+sub(
+"""	aw_dev->volume_desc.ctl_volume = AW88166_VOL_DEFAULT_VALUE;
+""",
+"""	aw_dev->volume_desc.ctl_volume = AW88166_MUTE_VOL;
+""")
+
 io.open(p, "w", newline="\n").write(src)
 print("patched aw88166.c")
 PY
