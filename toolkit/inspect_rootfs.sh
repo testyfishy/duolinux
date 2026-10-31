@@ -1,6 +1,6 @@
 #!/bin/bash
 # Inspect the Debian rootfs inside out/duolinux-duol.img (partition 2)
-cd "/mnt/c/Users/HTPC-Aran/Documents/Default Project/duolinux/out" || exit 1
+cd "/mnt/c/path/to/duolinux/out" || exit 1
 D="duolinux-duol.img?offset=537919488"
 
 dump() {

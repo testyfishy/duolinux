@@ -254,7 +254,7 @@ for line in raw:
         out.append(f"+++ b/src/input/target/{name}")
     else:
         out.append(line)
-path = pathlib.Path("/mnt/c/Users/HTPC-Aran/Documents/Default Project/duolinux/out/inputplumber-fork/0003-needs-poll.patch")
+path = pathlib.Path("/mnt/c/path/to/duolinux/out/inputplumber-fork/0003-needs-poll.patch")
 path.write_text("\n".join(out).rstrip("\n") + "\n")
 print("wrote", path.name, len(path.read_bytes()), "bytes")
 PY

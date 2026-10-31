@@ -1,7 +1,7 @@
 #!/bin/bash
 set -u
 S=/mnt/rnx/SYSTEM
-D="/mnt/c/Users/HTPC-Aran/Documents/Default Project/duolinux/out/rnx-port/plumber-root"
+D="/mnt/c/path/to/duolinux/out/rnx-port/plumber-root"
 rm -rf "$D"; mkdir -p "$D"
 
 PATHS="

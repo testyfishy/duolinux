@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 S=/mnt/rnx/SYSTEM
-DEST="/mnt/c/Users/HTPC-Aran/Documents/Default Project/duolinux/out/rnx-port"
+DEST="/mnt/c/path/to/duolinux/out/rnx-port"
 rm -rf "$DEST"; mkdir -p "$DEST"
 
 echo "=== locating binaries"

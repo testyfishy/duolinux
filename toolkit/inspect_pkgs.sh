@@ -1,5 +1,5 @@
 #!/bin/bash
-cd "/mnt/c/Users/HTPC-Aran/Documents/Default Project/duolinux/out" || exit 1
+cd "/mnt/c/path/to/duolinux/out" || exit 1
 D="duolinux-duol.img?offset=537919488"
 
 echo "===== looking for the modem/Wi-Fi userspace helpers in dpkg status:"

@@ -3,7 +3,7 @@
 import pathlib
 import re
 
-root = pathlib.Path(r"C:\Users\HTPC-Aran\Documents\Default Project\duolinux\out\wvkbd-0.15")
+root = pathlib.Path(r"C:\path\to\duolinux\out\wvkbd-0.15")
 
 # ---------------------------------------------------------------- keyboard.h
 kh = root / "keyboard.h"

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 S=/mnt/rnx/SYSTEM
-OUTDIR="/mnt/c/Users/HTPC-Aran/Documents/Default Project/duolinux/out/rnx-port/files"
+OUTDIR="/mnt/c/path/to/duolinux/out/rnx-port/files"
 mkdir -p "$OUTDIR"
 echo "=== extracting with -cat"
 unsquashfs -cat "$S" usr/lib/libqrtr.so.1.2 > "$OUTDIR/libqrtr.so.1.2"

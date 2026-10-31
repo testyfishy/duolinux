@@ -30,7 +30,7 @@ and tapping Retroid’s “Run script as root” entry. Everything else is scrip
 Open **PowerShell** in the project folder:
 
 ```powershell
-cd "C:\Users\HTPC-Aran\Documents\Default Project\duolinux"
+cd "C:\path\to\duolinux"
 ```
 
 Start the guided pairing:
@@ -111,7 +111,7 @@ USB-C **data** cable.
 3. On the PC:
 
 ```powershell
-cd "C:\Users\HTPC-Aran\Documents\Default Project\duolinux"
+cd "C:\path\to\duolinux"
 .\duo.ps1 probe
 .\duo.ps1 boot
 ```

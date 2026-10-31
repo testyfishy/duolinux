@@ -1,5 +1,5 @@
 #!/bin/bash
-D="/mnt/c/Users/HTPC-Aran/Documents/Default Project/duolinux/out/rnx-port/extract"
+D="/mnt/c/path/to/duolinux/out/rnx-port/extract"
 echo "=== binaries"
 for b in pd-mapper rmtfs tqftpserv; do
   f="$D/usr/bin/$b"

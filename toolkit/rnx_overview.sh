@@ -1,7 +1,7 @@
 #!/bin/bash
 # Inventory the official ROCKNIX SM6115 image: what do they have that we lack?
 set -e
-OUT="/mnt/c/Users/HTPC-Aran/Documents/Default Project/duolinux/out"
+OUT="/mnt/c/path/to/duolinux/out"
 cd "$OUT"
 
 if [ ! -f rocknix.img ]; then
