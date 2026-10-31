@@ -211,7 +211,8 @@ def main() -> int:
     ranges: dict[str, tuple[float, float, float, float]] = {}
     sticks: dict[str, list[int | None]] = {}
     last_abs: dict[str, float] = {}
-    last_key = 0.0
+    f1_down = False
+    home_down = False
     active_source = None
 
     state = {"emit": time.time(), "v": 0.0, "h": 0.0}
@@ -316,15 +317,26 @@ def main() -> int:
                         continue
                     last_abs[path] = time.time()
                     active_source = path
-                elif kind == EV_KEY and value == 1:
-                    now = time.time()
-                    if now - last_key < DEBOUNCE:
+                elif kind == EV_KEY and code in (KEY_F1, KEY_HOME):
+                    # Act on the press *edge* only. A held button generates key
+                    # repeats, and a time-based debounce let the first repeat
+                    # after the window toggle again (keyboard appears, then
+                    # vanishes a moment later).
+                    if value == 0:
+                        if code == KEY_F1:
+                            f1_down = False
+                        else:
+                            home_down = False
                         continue
                     if code == KEY_F1:
-                        last_key = now
+                        if f1_down:
+                            continue
+                        f1_down = True
                         toggle_keyboard()
-                    elif code == KEY_HOME:
-                        last_key = now
+                    else:
+                        if home_down:
+                            continue
+                        home_down = True
                         handle_home()
 
         # Scrolling is handled by InputPlumber when /etc/duo/scroll-source says
