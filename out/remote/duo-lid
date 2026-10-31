@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Suspend when the lid closes.
+
+logind detects the lid (SW_LID on gpio-keys-lid) but PowerDevil suppresses the
+action because it sees the DP-1 panel as an external monitor, so nothing
+happens. This watches the switch itself and asks systemd to suspend, which
+bypasses that suppression. Opening the lid wakes the machine as usual.
+
+A short dwell avoids acting on a bounce, and it only reacts to changes, so a
+lid already closed at boot does not immediately suspend.
+"""
+import os
+import select
+import struct
+import subprocess
+import time
+
+EV_SW = 0x05
+SW_LID = 0x00
+DEBOUNCE = 0.5
+TICK = 0.5
+
+DEVICE = "gpio-keys-lid"
+
+
+def find_device() -> str | None:
+    name = None
+    for line in open("/proc/bus/input/devices"):
+        line = line.strip()
+        if line.startswith("N: Name="):
+            name = line.split("=", 1)[1].strip().strip('"')
+        elif line.startswith("H: Handlers=") and name == DEVICE:
+            for handler in line.split("=", 1)[1].split():
+                if handler.startswith("event"):
+                    return f"/dev/input/{handler}"
+    return None
+
+
+def main() -> int:
+    fd = None
+    closed = None
+    last_change = 0.0
+
+    while True:
+        if fd is None:
+            path = find_device()
+            if path is None:
+                time.sleep(2)
+                continue
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                print(f"duo-lid: watching {path}", flush=True)
+            except OSError:
+                time.sleep(2)
+                continue
+
+        try:
+            readable, _, _ = select.select([fd], [], [], TICK)
+        except InterruptedError:
+            continue
+
+        if readable:
+            try:
+                data = os.read(fd, 24 * 32)
+            except OSError:
+                os.close(fd)
+                fd = None
+                continue
+            for offset in range(0, len(data) - 23, 24):
+                _s, _u, kind, code, value = struct.unpack(
+                    "@llHHi", data[offset:offset + 24])
+                if kind != EV_SW or code != SW_LID:
+                    continue
+                now = time.time()
+                if closed is not None and value == closed:
+                    continue
+                if now - last_change < DEBOUNCE:
+                    continue
+                last_change = now
+                closed = value
+                print(f"duo-lid: lid {'closed' if value else 'opened'}",
+                      flush=True)
+                if value:
+                    # Blank both panels first: suspend blanks DSI-1 but the
+                    # DP-1 panel behind the bridge stays lit, which makes the
+                    # device look half-awake. The guard is stopped so it does
+                    # not re-pin the bottom panel while suspended.
+                    subprocess.run(["systemctl", "stop", "duo-brightness-guard"],
+                                   check=False)
+                    for device in ("backlight", "serial0-0"):
+                        try:
+                            with open(f"/sys/class/backlight/{device}/brightness", "w") as fh:
+                                fh.write("0")
+                        except OSError:
+                            pass
+                    subprocess.run(["systemctl", "suspend"], check=False)
+                else:
+                    for device, level in (("backlight", "150"), ("serial0-0", "255")):
+                        try:
+                            with open(f"/sys/class/backlight/{device}/brightness", "w") as fh:
+                                fh.write(level)
+                        except OSError:
+                            pass
+                    subprocess.run(["systemctl", "start", "duo-brightness-guard"],
+                                   check=False)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
