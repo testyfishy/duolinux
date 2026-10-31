@@ -77,6 +77,29 @@ Two practical rules, learned the hard way:
   its system tray applet (missing volume/network icons) is the usual symptom of hand-editing while
   running; re-add it with `out/remote/fix-tray-and-measure.sh`.
 
+## Stick as mouse
+
+There is no touchpad. The pointer is a profile InputPlumber loads on demand:
+`duo-mouse-apply` reads `/etc/duo/mouse-mode` and
+`~/.config/duo/mouse-stick`, then calls `LoadProfilePath` on the composite
+device over D-Bus with `mouse-left.yaml` or `mouse-right.yaml`. On this device
+the choice is `left`: the left stick moves the pointer, the right stick scrolls.
+
+That profile lives **inside the running daemon**, so `systemctl restart
+inputplumber` silently removes it - the pointer stops working until the profile
+is loaded again. `duo-mouse.service` now carries `PartOf=inputplumber.service`,
+and `toolkit/cross/deploy.sh` restarts `duo-mouse` after a deploy, so the mapping
+comes back by itself. If the pointer ever dies after an InputPlumber change:
+
+```sh
+systemctl restart duo-mouse
+busctl call org.shadowblip.InputPlumber \
+  /org/shadowblip/InputPlumber/CompositeDevice0 \
+  org.freedesktop.DBus.Properties Get ss org.shadowblip.Input.CompositeDevice ProfilePath
+```
+
+The second command should print `mouse-left.yaml` rather than an empty string.
+
 ## Battery indicator
 
 One indicator only: **Plasma's own tray battery**. The standalone
