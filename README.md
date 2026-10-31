@@ -132,11 +132,15 @@ make            # needs wayland, pango/cairo, xkbcommon dev packages
 
 ## Status and known limitations
 
-- **Right-stick scrolling was only just fixed** (hi-res wheel via `duo-backkey`); expect tuning of
-  speed and dead-zone.
+- **Right-stick scrolling** is implemented in `duo-backkey` as hi-res wheel events, because
+  InputPlumber 0.82 has no axis-to-wheel target. Speed, dead-zone and direction (natural or
+  inverted) are tunable; a proper upstream wheel mapping is the cleaner long-term fix.
 - **L2/R2 are unassigned** in the default controller map.
 - **The button-mapping UI is minimal**: remap by name only, no live capture/preview, no per-app
   profiles.
+- **Battery and audio applets came from packages the initial Plasma install skipped**
+  (`powerdevil`, `plasma-pa`). Both are now part of the documented package set; without them the
+  panel shows no battery and the tray reports a missing QML module.
 - **No floating keyboard**: wvkbd is a docked layer-shell panel on one output; it cannot be moved
   or resized by touch.
 - The Python toolkit and `docs/` still describe the Sway first pass; the Plasma setup is
