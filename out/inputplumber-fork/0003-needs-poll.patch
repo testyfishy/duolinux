@@ -1,0 +1,243 @@
+--- a/src/input/target/orig-mod.rs
++++ b/src/input/target/mod.rs
+@@ -414,6 +414,15 @@
+         Ok(vec![])
+     }
+ 
++    /// Whether this target needs to be polled on a timer.
++    ///
++    /// Devices that only emit in response to commands (a keyboard) or that have
++    /// nothing to integrate (a mouse with zero velocity) return false. The
++    /// target loop then waits for commands instead of waking at `poll_rate`.
++    fn needs_poll(&self) -> bool {
++        true
++    }
++
+     /// Returns the possible output events this device is capable of emitting
+     #[allow(dead_code)]
+     fn get_output_capabilities(&self) -> Result<Vec<OutputCapability>, OutputError> {
+@@ -524,6 +533,10 @@
+ 
+                 log::debug!("Target device running: {}", self.dbus.path());
+                 let mut interval = tokio::time::interval(self.options.poll_rate);
++                // Do not fire a burst of ticks when polling resumes after an idle
++                // period; a single delayed tick is enough to integrate the gap.
++                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
++                let mut was_polling = false;
+                 loop {
+                     // Find any scheduled events that are ready to be sent
+                     let mut ready_events = vec![];
+@@ -592,17 +605,40 @@
+                         }
+                     }
+ 
+-                    // Sleep for the configured duration or until a command is sent
+-                    tokio::select! {
+-                        _ = interval.tick() => (),
+-                        Some(cmd) = rx.recv() => {
+-                            let mut implementation = self.implementation.lock().unwrap();
+-                            let result = Self::process_command(&self.type_id, &mut composite_device, &metrics_tx, &mut implementation, cmd);
+-                            if let Err(e) = result {
+-                                log::debug!("Error processing received command: {e}");
+-                                break;
++                    // Devices that emit only in response to commands (a keyboard)
++                    // or that have nothing to integrate (a mouse at rest) must not
++                    // be woken by a timer. Ask the implementation and either wait
++                    // for a tick or block on the command channel.
++                    let needs_poll = {
++                        let implementation = self.implementation.lock().unwrap();
++                        implementation.needs_poll()
++                    };
++                    if needs_poll && !was_polling {
++                        interval.reset();
++                    }
++                    was_polling = needs_poll;
++
++                    if needs_poll {
++                        tokio::select! {
++                            _ = interval.tick() => (),
++                            Some(cmd) = rx.recv() => {
++                                let mut implementation = self.implementation.lock().unwrap();
++                                let result = Self::process_command(&self.type_id, &mut composite_device, &metrics_tx, &mut implementation, cmd);
++                                if let Err(e) = result {
++                                    log::debug!("Error processing received command: {e}");
++                                    break;
++                                }
+                             }
+                         }
++                    } else if let Some(cmd) = rx.recv().await {
++                        let mut implementation = self.implementation.lock().unwrap();
++                        let result = Self::process_command(&self.type_id, &mut composite_device, &metrics_tx, &mut implementation, cmd);
++                        if let Err(e) = result {
++                            log::debug!("Error processing received command: {e}");
++                            break;
++                        }
++                    } else {
++                        break;
+                     }
+                 }
+ 
+--- a/src/input/target/orig-keyboard.rs
++++ b/src/input/target/keyboard.rs
+@@ -431,4 +431,10 @@
+     }
+ }
+ 
+-impl TargetOutputDevice for KeyboardDevice {}
++impl TargetOutputDevice for KeyboardDevice {
++    /// Key presses arrive as TargetCommand::WriteEvent, which wakes the target
++    /// loop through its command channel, so no timer is needed.
++    fn needs_poll(&self) -> bool {
++        false
++    }
++}
+--- a/src/input/target/orig-mouse.rs
++++ b/src/input/target/mouse.rs
+@@ -1,9 +1,13 @@
+-use std::{collections::HashMap, error::Error, time::Instant};
++use std::{
++    collections::HashMap,
++    error::Error,
++    time::{Duration, Instant},
++};
+ 
+ use evdev::{
+     uinput::{VirtualDevice, VirtualDeviceBuilder},
+-    AbsInfo, AbsoluteAxisCode, AttributeSet, BusType, InputEvent, InputId, KeyCode,
+-    RelativeAxisCode,
++    AbsInfo, AbsoluteAxisCode, AttributeSet, BusType, EventType, InputEvent, InputId,
++    KeyCode, RelativeAxisCode,
+ };
+ 
+ use crate::{
+@@ -48,6 +52,8 @@
+ pub struct MouseMotionState {
+     mouse_remainder: (f64, f64),
+     mouse_velocity: (f64, f64),
++    wheel_velocity: f64,
++    wheel_remainder: f64,
+ }
+ 
+ /// [MouseDevice] is a target virtual mouse that can be used to send mouse input
+@@ -109,6 +115,8 @@
+                 RelativeAxisCode::REL_Y,
+                 RelativeAxisCode::REL_WHEEL,
+                 RelativeAxisCode::REL_HWHEEL,
++                RelativeAxisCode::REL_WHEEL_HI_RES,
++                RelativeAxisCode::REL_HWHEEL_HI_RES,
+             ]))?
+             .build()?;
+ 
+@@ -126,6 +134,8 @@
+         };
+ 
+         // Update the mouse velocity
++        let was_at_rest = self.state.mouse_velocity == (0.0, 0.0)
++            && self.state.wheel_velocity == 0.0;
+         if let Some(x) = x {
+             self.state.mouse_velocity.0 = x;
+             log::trace!("Updating mouse state: {:?}", self.state.mouse_velocity);
+@@ -134,6 +144,14 @@
+             self.state.mouse_velocity.1 = y;
+             log::trace!("Updating mouse state: {:?}", self.state.mouse_velocity);
+         }
++        if was_at_rest
++            && (self.state.mouse_velocity != (0.0, 0.0)
++                || self.state.wheel_velocity != 0.0)
++        {
++            // Polling resumes from this instant, not from the last poll before
++            // the pointer went idle.
++            self.last_poll = Instant::now();
++        }
+     }
+ }
+ 
+@@ -161,6 +179,21 @@
+             return Ok(());
+         }
+ 
++        // Wheel velocity from an axis is integrated in poll(), so the scroll
++        // rate does not depend on how often the controller reports.
++        if event.is_translated()
++            && matches!(event.as_capability(), Capability::Mouse(Mouse::Wheel))
++        {
++            if let InputValue::Vector2 { x, y } = event.get_value() {
++                if let Some(v) = y {
++                    self.state.wheel_velocity = v;
++                } else if let Some(v) = x {
++                    self.state.wheel_velocity = v;
++                }
++            }
++            return Ok(());
++        }
++
+         // Translate and emit the event(s)
+         let evdev_events = self.translate_event(event);
+         if let Err(e) = self.device.emit(evdev_events.as_slice()) {
+@@ -187,14 +220,27 @@
+     fn clear_state(&mut self) {
+         self.state.mouse_velocity = (0.0, 0.0);
+         self.state.mouse_remainder = (0.0, 0.0);
++        self.state.wheel_velocity = 0.0;
++        self.state.wheel_remainder = 0.0;
+     }
+ }
+ 
+ impl TargetOutputDevice for MouseDevice {
++    /// Only the integrator needs a timer: with zero motion and wheel velocity
++    /// there is nothing to advance, and events still arrive by command.
++    fn needs_poll(&self) -> bool {
++        self.state.mouse_velocity != (0.0, 0.0) || self.state.wheel_velocity != 0.0
++    }
++
+     /// Move the mouse based on the given input event translation
+     fn poll(&mut self, _: &Option<CompositeDeviceClient>) -> Result<Vec<OutputEvent>, OutputError> {
+-        // Calculate the delta between the last poll
+-        let delta = self.last_poll.elapsed();
++        // Calculate the delta between the last poll. The target stops polling
++        // while the mouse is at rest, so cap the gap: a long idle period must
++        // not be multiplied by the velocity that just started.
++        let mut delta = self.last_poll.elapsed();
++        if delta > Duration::from_millis(50) {
++            delta = Duration::from_millis(50);
++        }
+         self.last_poll = Instant::now();
+ 
+         // Calculate how much the mouse should move based on the current mouse velocity
+@@ -249,6 +295,36 @@
+             }
+         }
+ 
++        // Integrate wheel velocity: 120 hi-res units make one detent, and the
++        // legacy event is emitted alongside for consumers that ignore hi-res.
++        let wheel_delta = delta.as_secs_f64() * self.state.wheel_velocity;
++        if wheel_delta != 0.0 {
++            self.state.wheel_remainder += wheel_delta;
++            let hi_res = self.state.wheel_remainder.trunc() as i32;
++            self.state.wheel_remainder -= hi_res as f64;
++            let notches = hi_res / 120;
++            let mut events = Vec::new();
++            if hi_res != 0 {
++                events.push(InputEvent::new(
++                    EventType::RELATIVE.0,
++                    RelativeAxisCode::REL_WHEEL_HI_RES.0,
++                    hi_res,
++                ));
++            }
++            if notches != 0 {
++                events.push(InputEvent::new(
++                    EventType::RELATIVE.0,
++                    RelativeAxisCode::REL_WHEEL.0,
++                    notches,
++                ));
++            }
++            if !events.is_empty() {
++                if let Err(e) = self.device.emit(&events) {
++                    return Err(e.to_string().into());
++                }
++            }
++        }
++
+         Ok(vec![])
+     }
+ }
