@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""duo-dictate: click-to-talk speech to text.
+
+Flow: first click starts recording from the ALSA capture PCM, second click stops
+it, the clip is transcribed by the HTPC's whisper-server over the LAN/Tailscale,
+and the text is typed into whatever window has focus.
+
+Typing goes through its own uinput device, because KWin does not implement
+zwp_virtual_keyboard_v1 (wtype cannot work here) and ydotool is not packaged.
+
+Subcommands:
+    toggle          start recording, or stop + transcribe + type
+    status          report whether it is recording
+    --file WAV      transcribe a file and type it (for testing the typing path)
+
+Everything is configurable by environment:
+    DUO_STT_URL     default http://100.64.0.10:8090/v1/audio/transcriptions
+    DUO_STT_LOCAL   local whisper-cli used when the server is unreachable
+"""
+import os
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+import uuid
+
+STATE = f"/run/user/{os.getuid()}/duo-dictate.state"
+RAW = f"/run/user/{os.getuid()}/duo-dictate.raw"
+WAV = f"/run/user/{os.getuid()}/duo-dictate.wav"
+SERVER = os.environ.get("DUO_STT_URL", "http://100.64.0.10:8090/v1/audio/transcriptions")
+LOCAL_CLI = os.environ.get("DUO_STT_LOCAL", "/opt/duo-stt/bin/whisper-cli")
+LOCAL_MODEL = os.environ.get("DUO_STT_MODEL", "/opt/duo-stt/models/ggml-tiny.en.bin")
+CAPTURE = os.environ.get("DUO_STT_CAPTURE", "hw:0,2")
+MAX_SECONDS = 60
+
+
+def notify(msg):
+    try:
+        subprocess.run(["notify-send", "-a", "Dictate", "-i", "audio-input-microphone",
+                        "Dictate", msg], timeout=3,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------- typing ----
+
+_SPECIAL = {
+    " ": (57, False), "\t": (15, False), "\n": (57, False), " ": (57, False),
+    ".": (52, False), ",": (51, False), "'": (40, False), "`": (41, False),
+    "-": (12, False), "=": (13, False), "[": (26, False), "]": (27, False),
+    "\\": (43, False), ";": (39, False), "/": (53, False),
+    "!": (2, True), "@": (3, True), "#": (4, True), "$": (5, True),
+    "%": (6, True), "^": (7, True), "&": (8, True), "*": (9, True),
+    "(": (10, True), ")": (11, True), "_": (12, True), "+": (13, True),
+    "{": (26, True), "}": (27, True), "|": (43, True), ":": (39, True),
+    '"': (40, True), "<": (51, True), ">": (52, True), "?": (53, True),
+    "~": (41, True),
+}
+
+_LETTER = {c: i for i, c in enumerate("qwertyuiopasdfghjklzxcvbnm", start=16)}
+_DIGIT = {c: i for i, c in enumerate("1234567890", start=2)}
+
+
+def char_to_key(ch):
+    if ch.lower() in _LETTER:
+        return _LETTER[ch.lower()], ch.isupper()
+    if ch.isdigit():
+        return _DIGIT[ch], False
+    if ch in _SPECIAL:
+        return _SPECIAL[ch]
+    return None
+
+
+def type_text(text):
+    """Type ASCII through uinput. Non-ASCII is dropped rather than mangled."""
+    from evdev import UInput, ecodes as e
+
+    keys = set(range(2, 12)) | set(range(16, 28)) | set(range(30, 42)) | set(range(43, 54)) | {57, 42, 58}
+    ui = UInput({e.EV_KEY: sorted(keys)}, name="duo-dictate", version=1)
+    time.sleep(0.2)
+    try:
+        for ch in text:
+            k = char_to_key(ch)
+            if k is None:
+                continue
+            code, shift = k
+            if shift:
+                ui.write(e.EV_KEY, e.KEY_LEFTSHIFT, 1)
+            ui.write(e.EV_KEY, code, 1)
+            ui.write(e.EV_KEY, code, 0)
+            if shift:
+                ui.write(e.EV_KEY, e.KEY_LEFTSHIFT, 0)
+            ui.syn()
+            time.sleep(0.006)
+    finally:
+        ui.close()
+
+
+# -------------------------------------------------------------- capture ----
+
+def recording():
+    try:
+        with open(STATE) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)
+        return pid
+    except Exception:
+        return None
+
+
+def start():
+    if recording():
+        notify("already listening")
+        return
+    rec = subprocess.Popen(
+        ["arecord", "-q", "-D", CAPTURE, "-f", "S16_LE", "-r", "48000", "-c", "1",
+         "-d", str(MAX_SECONDS), RAW],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+    )
+    with open(STATE, "w") as f:
+        f.write(str(rec.pid))
+    notify("listening — click again to stop")
+
+
+def stop_and_transcribe():
+    pid = recording()
+    if not pid:
+        notify("not listening")
+        return 1
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    time.sleep(0.7)
+    try:
+        os.unlink(STATE)
+    except OSError:
+        pass
+
+    if not os.path.exists(RAW) or os.path.getsize(RAW) < 8000:
+        notify("no speech heard")
+        return 1
+
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-i", RAW, "-ar", "16000", "-ac", "1", WAV],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    notify("transcribing…")
+    text, engine = transcribe(WAV)
+    if not text:
+        notify("nothing understood")
+        return 1
+    type_text(text)
+    notify(f"typed ({engine})")
+    return 0
+
+
+# ---------------------------------------------------------- transcribe ----
+
+def transcribe(path):
+    try:
+        with open(path, "rb") as f:
+            audio = f.read()
+        boundary = uuid.uuid4().hex
+        body = b"".join([
+            f"--{boundary}\r\n".encode(),
+            b'Content-Disposition: form-data; name="file"; filename="clip.wav"\r\n',
+            b"Content-Type: audio/wav\r\n\r\n", audio, b"\r\n",
+            f"--{boundary}\r\n".encode(),
+            b'Content-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n',
+            f"--{boundary}\r\n".encode(),
+            b'Content-Disposition: form-data; name="response_format"\r\n\r\ntext\r\n',
+            f"--{boundary}--\r\n".encode(),
+        ])
+        req = urllib.request.Request(
+            SERVER, data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            return r.read().decode("utf-8", "replace").strip(), "htpc"
+    except Exception:
+        pass
+
+    # fallback: very accurate but slow, ~4-5 s for a 3 s clip
+    try:
+        out = subprocess.run([LOCAL_CLI, "-m", LOCAL_MODEL, "-f", path, "-t", "4", "-nt"],
+                             capture_output=True, text=True, timeout=120).stdout
+        lines = [l.strip() for l in out.splitlines() if l.strip() and not l.startswith("whisper_")]
+        return (lines[-1] if lines else ""), "local"
+    except Exception:
+        return "", "none"
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] == "toggle":
+        if recording():
+            return stop_and_transcribe()
+        start()
+        return 0
+    if args[0] == "status":
+        pid = recording()
+        print("recording" if pid else "idle")
+        return 0
+    if args[0] == "--file" and len(args) > 1:
+        text, engine = transcribe(args[1])
+        print(f"{engine}: {text!r}")
+        if text:
+            type_text(text)
+        return 0
+    print(__doc__)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
