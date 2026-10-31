@@ -1,0 +1,25 @@
+From dc82224ed83de94d88c2755c04a64df251c873a2 Mon Sep 17 00:00:00 2001
+From: duolinux kernel port <port@localhost>
+Date: Sat, 31 Oct 2026 10:58:56 -0600
+Subject: [PATCH 46/79] rk: 0056-fusb302-map-collision-to-tx-discarded.patch
+
+---
+ drivers/usb/typec/tcpm/fusb302.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/usb/typec/tcpm/fusb302.c b/drivers/usb/typec/tcpm/fusb302.c
+index d3b8d0da1..b575c6c2e 100644
+--- a/drivers/usb/typec/tcpm/fusb302.c
++++ b/drivers/usb/typec/tcpm/fusb302.c
+@@ -1579,7 +1579,7 @@ static void fusb302_irq_work(struct work_struct *work)
+ 
+ 	if (interrupt & FUSB_REG_INTERRUPT_COLLISION) {
+ 		fusb302_log(chip, "IRQ: PD collision");
+-		tcpm_pd_transmit_complete(chip->tcpm_port, TCPC_TX_FAILED);
++		tcpm_pd_transmit_complete(chip->tcpm_port, TCPC_TX_DISCARDED);
+ 	}
+ 
+ 	if (interrupta & FUSB_REG_INTERRUPTA_RETRYFAIL) {
+-- 
+2.53.0
+

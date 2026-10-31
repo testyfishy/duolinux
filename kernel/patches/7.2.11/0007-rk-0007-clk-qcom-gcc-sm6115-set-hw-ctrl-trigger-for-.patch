@@ -1,0 +1,25 @@
+From f61b95adf5c98bedb2c8f4af3372de0bce922c55 Mon Sep 17 00:00:00 2001
+From: Dmitry Baryshkov <dmitry.baryshkov@oss.qualcomm.com>
+Date: Sat, 31 Oct 2026 10:58:42 -0600
+Subject: rk:
+ 0007-clk-qcom-gcc-sm6115-set-hw-ctrl-trigger-for-video-gdsc.patch
+
+---
+ drivers/clk/qcom/gcc-sm6115.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/clk/qcom/gcc-sm6115.c b/drivers/clk/qcom/gcc-sm6115.c
+index e8bf42c59..f1c1f5128 100644
+--- a/drivers/clk/qcom/gcc-sm6115.c
++++ b/drivers/clk/qcom/gcc-sm6115.c
+@@ -3214,6 +3214,7 @@ static struct gdsc gcc_vcodec0_gdsc = {
+ 	.pd = {
+ 		.name = "gcc_vcodec0",
+ 	},
++	.flags = HW_CTRL_TRIGGER,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+ 
+-- 
+2.53.0
+

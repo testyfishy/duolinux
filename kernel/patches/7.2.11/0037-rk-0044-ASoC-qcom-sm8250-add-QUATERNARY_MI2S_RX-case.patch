@@ -1,0 +1,42 @@
+From 5eb32aee9fee08d2e6ad24466a854eb65f8ee5cc Mon Sep 17 00:00:00 2001
+From: duolinux kernel port <port@localhost>
+Date: Sat, 31 Oct 2026 10:58:53 -0600
+Subject: [PATCH 37/79] rk:
+ 0044-ASoC-qcom-sm8250-add-QUATERNARY_MI2S_RX-case.patch
+
+---
+ sound/soc/qcom/sm8250.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/sound/soc/qcom/sm8250.c b/sound/soc/qcom/sm8250.c
+index f3c7d9c6c..fd5d40337 100644
+--- a/sound/soc/qcom/sm8250.c
++++ b/sound/soc/qcom/sm8250.c
+@@ -106,6 +106,24 @@ static int sm8250_snd_startup(struct snd_pcm_substream *substream)
+ 		for_each_rtd_codec_dais(rtd, j, codec_dai)
+ 			snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
+ 		break;
++	case QUATERNARY_MI2S_RX:
++		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S;
++		snd_soc_dai_set_sysclk(cpu_dai,
++			Q6AFE_LPASS_CLK_ID_QUAD_MI2S_IBIT,
++			MI2S_BCLK_RATE, SNDRV_PCM_STREAM_PLAYBACK);
++		snd_soc_dai_set_fmt(cpu_dai, fmt);
++		for_each_rtd_codec_dais(rtd, j, codec_dai)
++			snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
++		break;
++	case QUATERNARY_MI2S_TX:
++		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S;
++		snd_soc_dai_set_sysclk(cpu_dai,
++			Q6AFE_LPASS_CLK_ID_QUAD_MI2S_IBIT,
++			MI2S_BCLK_RATE, SNDRV_PCM_STREAM_CAPTURE);
++		snd_soc_dai_set_fmt(cpu_dai, fmt);
++		for_each_rtd_codec_dais(rtd, j, codec_dai)
++			snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
++		break;
+ 	case QUINARY_MI2S_RX:
+ 		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S;
+ 		snd_soc_dai_set_sysclk(cpu_dai,
+-- 
+2.53.0
+

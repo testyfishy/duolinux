@@ -1,0 +1,22 @@
+From a0e3bee9014077aa0e5f83aa753b8b78341d0ea1 Mon Sep 17 00:00:00 2001
+From: duolinux kernel port <port@localhost>
+Date: Sat, 31 Oct 2026 10:58:45 -0600
+Subject: [PATCH 16/79] rk: 0017-cpuidle-psci-defer-to-late_initcall_sync.patch
+
+---
+ drivers/cpuidle/cpuidle-psci.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/cpuidle/cpuidle-psci.c b/drivers/cpuidle/cpuidle-psci.c
+index b250d0dde..3cbca393a 100644
+--- a/drivers/cpuidle/cpuidle-psci.c
++++ b/drivers/cpuidle/cpuidle-psci.c
+@@ -479,4 +479,4 @@ static int __init psci_idle_init(void)
+ 
+ 	return 0;
+ }
+-device_initcall(psci_idle_init);
++late_initcall_sync(psci_idle_init);
+-- 
+2.53.0
+

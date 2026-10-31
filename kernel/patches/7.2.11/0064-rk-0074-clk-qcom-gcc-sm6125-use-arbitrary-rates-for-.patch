@@ -1,0 +1,55 @@
+From 4e0a30f584eb30a0e9dc1f60bc1b088cf6b1dbbf Mon Sep 17 00:00:00 2001
+From: Noxwell <beebono@gmail.com>
+Date: Fri, 2 Oct 2026 12:00:00 -0500
+Subject: rk:
+ 0074-clk-qcom-gcc-sm6125-use-arbitrary-rates-for-gp-clocks.patch
+
+---
+ drivers/clk/qcom/gcc-sm6125.c | 10 +++-------
+ 1 file changed, 3 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/clk/qcom/gcc-sm6125.c b/drivers/clk/qcom/gcc-sm6125.c
+index 07bb1e5c4..14ab55248 100644
+--- a/drivers/clk/qcom/gcc-sm6125.c
++++ b/drivers/clk/qcom/gcc-sm6125.c
+@@ -817,10 +817,6 @@ static struct clk_rcg2 gcc_camss_vfe1_clk_src = {
+ };
+ 
+ static const struct freq_tbl ftbl_gcc_gp1_clk_src[] = {
+-	F(25000000, P_GPLL0_OUT_AUX2, 12, 0, 0),
+-	F(50000000, P_GPLL0_OUT_AUX2, 6, 0, 0),
+-	F(100000000, P_GPLL0_OUT_EARLY, 6, 0, 0),
+-	F(200000000, P_GPLL0_OUT_EARLY, 3, 0, 0),
+ 	{ }
+ };
+ 
+@@ -834,7 +830,7 @@ static struct clk_rcg2 gcc_gp1_clk_src = {
+ 		.name = "gcc_gp1_clk_src",
+ 		.parent_data = gcc_parent_data_2,
+ 		.num_parents = ARRAY_SIZE(gcc_parent_data_2),
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_gp_ops,
+ 	},
+ };
+ 
+@@ -848,7 +844,7 @@ static struct clk_rcg2 gcc_gp2_clk_src = {
+ 		.name = "gcc_gp2_clk_src",
+ 		.parent_data = gcc_parent_data_2,
+ 		.num_parents = ARRAY_SIZE(gcc_parent_data_2),
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_gp_ops,
+ 	},
+ };
+ 
+@@ -862,7 +858,7 @@ static struct clk_rcg2 gcc_gp3_clk_src = {
+ 		.name = "gcc_gp3_clk_src",
+ 		.parent_data = gcc_parent_data_2,
+ 		.num_parents = ARRAY_SIZE(gcc_parent_data_2),
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_gp_ops,
+ 	},
+ };
+ 
+-- 
+2.53.0
+

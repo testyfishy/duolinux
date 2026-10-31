@@ -1,0 +1,25 @@
+From 3f98e953adc0e8d201acbca8c59c4c9bb7de938b Mon Sep 17 00:00:00 2001
+From: Noxwell <beebono@gmail.com>
+Date: Tue, 29 Sep 2026 20:00:00 -0500
+Subject: rk:
+ 0066-firmware-qcom-tzmem-disable-shm-bridge-on-sm6125.patch
+
+---
+ drivers/firmware/qcom/qcom_tzmem.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/firmware/qcom/qcom_tzmem.c b/drivers/firmware/qcom/qcom_tzmem.c
+index 0fd958127..2a3ada047 100644
+--- a/drivers/firmware/qcom/qcom_tzmem.c
++++ b/drivers/firmware/qcom/qcom_tzmem.c
+@@ -82,6 +82,7 @@ static const char *const qcom_tzmem_blacklist[] = {
+ 	"qcom,sc8180x",
+ 	"qcom,sdm670", /* failure in GPU firmware loading */
+ 	"qcom,sdm845", /* reset in rmtfs memory assignment */
++	"qcom,sm6125", /* failure in GPU firmware loading */
+ 	"qcom,sm7150", /* reset in rmtfs memory assignment */
+ 	"qcom,sm8150", /* reset in rmtfs memory assignment */
+ 	NULL
+-- 
+2.53.0
+

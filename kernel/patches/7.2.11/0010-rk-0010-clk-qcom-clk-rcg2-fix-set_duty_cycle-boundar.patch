@@ -1,0 +1,29 @@
+From 0f7c26dc75a0f89e0d0de2606c8e2583e4e80a39 Mon Sep 17 00:00:00 2001
+From: Xilin Wu <sophon@radxa.com>
+Date: Sat, 31 Oct 2026 10:58:43 -0600
+Subject: rk:
+ 0010-clk-qcom-clk-rcg2-fix-set_duty_cycle-boundary-checks.patch
+
+---
+ drivers/clk/qcom/clk-rcg2.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/clk/qcom/clk-rcg2.c b/drivers/clk/qcom/clk-rcg2.c
+index 6064a0e17..804dca987 100644
+--- a/drivers/clk/qcom/clk-rcg2.c
++++ b/drivers/clk/qcom/clk-rcg2.c
+@@ -783,9 +783,9 @@ static int clk_rcg2_set_duty_cycle(struct clk_hw *hw, struct clk_duty *duty)
+ 	 */
+ 	d = clamp_val(d, 1, mask);
+ 
+-	if ((d / 2) > (n - m))
++	if (d > (n - m) * 2)
+ 		d = (n - m) * 2;
+-	else if ((d / 2) < (m / 2))
++	else if (d < m)
+ 		d = m;
+ 
+ 	not2d = ~d & mask;
+-- 
+2.53.0
+

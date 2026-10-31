@@ -1,0 +1,30 @@
+From 0cf2db5bf8dfe5f6f6f6b9c38b6595865b04861f Mon Sep 17 00:00:00 2001
+From: duolinux kernel port <port@localhost>
+Date: Sat, 31 Oct 2026 10:58:52 -0600
+Subject: [PATCH 34/79] rk:
+ 0037-ASoC-qcom-sm8250-constrain-BE-format-to-S16_LE.patch
+
+---
+ sound/soc/qcom/sm8250.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/sound/soc/qcom/sm8250.c b/sound/soc/qcom/sm8250.c
+index f193d0ba6..9823fe7a3 100644
+--- a/sound/soc/qcom/sm8250.c
++++ b/sound/soc/qcom/sm8250.c
+@@ -62,11 +62,9 @@ static int sm8250_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+ 					SNDRV_PCM_HW_PARAM_RATE);
+ 	struct snd_interval *channels = hw_param_interval(params,
+ 					SNDRV_PCM_HW_PARAM_CHANNELS);
+-	struct snd_mask *fmt = hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT);
+-
+ 	rate->min = rate->max = 48000;
+ 	channels->min = channels->max = 2;
+-	snd_mask_set_format(fmt, SNDRV_PCM_FORMAT_S16_LE);
++	params_set_format(params, SNDRV_PCM_FORMAT_S16_LE);
+ 
+ 	return 0;
+ }
+-- 
+2.53.0
+
