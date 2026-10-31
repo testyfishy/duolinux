@@ -98,7 +98,7 @@ Measured on the Lite with two panels lit and nothing running:
 
 | Process | Idle CPU | Notes |
 |---|---|---|
-| `inputplumber` | 11 % (17 % with a DualSense also paired) | upstream 0.82 behaviour: every source device is polled at ~1 kHz with non-blocking reads that mostly return `EAGAIN`. Confirmed identical with the stock `/usr/bin/inputplumber`, so it is not the fork patch. No poll-interval option exists in the CLI or schema. |
+| `inputplumber` | 11 % (17 % while a second source node is active) | upstream 0.82 behaviour: the sources it manages are polled at ~1 kHz with non-blocking reads that mostly return `EAGAIN`. Confirmed identical with the stock `/usr/bin/inputplumber`, so it is not the fork patch. No poll-interval option exists in the CLI or schema. Its only sources on this device are the built-in pad (`event6`) and `aw86927-haptics` (`event5`); the `DualSense` nodes are its own output target, not extra hardware. |
 | `duo-backkey` | 0.3 % | was 2.5 % with a fixed 5 ms tick; the tick is now 250 ms unless a stick is being integrated into scroll |
 | `duo-fan` | 1 % | 2 s poll of the hwmon sensors |
 | `plasmashell` | 0.1 % | with stock Kickoff + Icons-only Task Manager |
