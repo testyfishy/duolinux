@@ -8,9 +8,41 @@ BOTTOM=DP-1
 STATE=/run/user/$(id -u)/duo-osk.on
 
 CONF="$HOME/.config/duo/kbd-height"
-H=560
-[ -f "$CONF" ] && H=$(cat "$CONF")
-case "$H" in ''|*[!0-9]*) H=560 ;; esac
+
+# The keyboard height must follow the bottom panel's LOGICAL height, because the
+# output scale changes with the layout (DP-1 is 1280x960 at scale 1.75 today,
+# i.e. 549 logical px). A hardcoded height then overflows onto the top panel.
+logical_height() {
+    kscreen-doctor -j 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for o in d.get("outputs", []):
+    if o.get("name") == "DP-1":
+        scale = o.get("scale") or 1
+        print(int(o["size"]["height"] / scale))
+        break
+'
+}
+
+LH=$(logical_height)
+case "$LH" in ''|*[!0-9]*) LH=549 ;; esac
+
+# 42% of the panel by default. A saved preference is honoured only when it
+# actually fits; if it does not (a stale height from a different scale), fall
+# back to the fraction rather than pinning the keyboard to full height.
+H=$((LH * 42 / 100))
+if [ -f "$CONF" ]; then
+    want=$(cat "$CONF" 2>/dev/null)
+    case "$want" in
+        ''|*[!0-9]*) : ;;
+        *) [ "$want" -le "$((LH - 24))" ] && H=$want ;;
+    esac
+fi
+[ "$H" -lt 120 ] && H=120
+[ "$H" -gt "$((LH - 24))" ] && H=$((LH - 24))
 
 start_hidden() {
     wvkbd-mobintl \
