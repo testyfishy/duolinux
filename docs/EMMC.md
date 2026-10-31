@@ -238,7 +238,33 @@ Recovery: hold power ~15 s, insert the SD, Volume Down, *Boot source* = **SD Car
 independently once the label fix is applied.
 
 
+## Verified after the first internal boot
+
+The device came up from the eMMC on 2026-10-31:
+
+| Check | Result |
+|---|---|
+| Root | `/dev/mmcblk1p89` ext4 `rw,noatime`, SD card absent |
+| Failed units | 0; graphical target at 29.7 s userspace |
+| `duo-init` | `boot partition: /dev/mmcblk1p88`, `root partition: /dev/mmcblk1p89` |
+| 4K QD1 random read | 2,567 IOPS, 0.28 ms avg, p99 0.90 ms (was 1,317 / 0.61 ms) |
+| 128K sequential | **320.4 MiB/s** (was 18.3 MiB/s, 17.5x) |
+| Machine idle | 98.2 % |
+| InputPlumber wakeups | 506/s, keyboard timer gone, sources 60/s each |
+| Pointer | `mouse-left.yaml` loaded, keyboard/mouse/ds5 targets present |
+
+Two findings from that boot:
+
+- **The ABL supplies its own kernel command line and ignores `extlinux`'s `APPEND`.** `/proc/cmdline`
+  still says `root=LABEL=STORAGE` even though the eMMC extlinux says `LINUXROOT`. Harmless, because
+  `duo-init` resolves the root by label itself; changing `APPEND` is cosmetic.
+- **`duo-brightness-guard` never started** because the unit had `WantedBy=multi-user.target` together
+  with `After=powerdevil.service graphical.target`, an impossible ordering, so systemd skipped it.
+  The `After=` line is removed (the daemon retries every 2 s anyway) and it now runs: bottom panel
+  pinned at 255, top floor enforced.
+
 ## Verification after the first internal boot
+
 
 1. `findmnt /` → `/dev/mmcblk1p89`; `lsblk -o NAME,LABEL,PARTUUID` shows `STORAGE` on the eMMC.
 2. `out/remote/disk-bench.sh` → expect ~2.9k IOPS 4K QD1 and >300 MiB/s sequential.

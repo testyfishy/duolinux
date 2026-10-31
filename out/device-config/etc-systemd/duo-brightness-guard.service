@@ -1,6 +1,5 @@
 [Unit]
 Description=Keep the backlight above a readable floor
-After=powerdevil.service graphical.target
 
 [Service]
 Type=simple
