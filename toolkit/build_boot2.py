@@ -112,9 +112,13 @@ if [ -d "$OV" ]; then
   chmod 644 /newroot/etc/systemd/system/duo-*.service 2>/dev/null
   chmod 755 /newroot/usr/local/bin/duo-usb-gadget /newroot/usr/local/bin/duo-diag 2>/dev/null
   mkdir -p /newroot/home/duo/.ssh
+  chown 1000:1000 /newroot/home/duo 2>/dev/null
   chmod 700 /newroot/home/duo/.ssh 2>/dev/null
   chmod 600 /newroot/home/duo/.ssh/authorized_keys 2>/dev/null
   chown -R 1000:1000 /newroot/home/duo/.ssh 2>/dev/null
+  # The home directory itself and anything the build created as root must belong
+  # to the user, or Firefox cannot create its profile ("profile cannot be loaded").
+  chown -R 1000:1000 /newroot/home/duo 2>/dev/null
   mkdir -p /newroot/etc/systemd/system/multi-user.target.wants
   if [ -f "$OV/ENABLE" ]; then
     for u in $(cat "$OV/ENABLE"); do
