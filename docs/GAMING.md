@@ -28,8 +28,27 @@ content and anti-cheat working, and turns the handheld into a screen and a pad.
 Setup: Sunshine on the Windows HTPC, paired to Moonlight on the device, then
 launch Steam Big Picture as a Sunshine app entry.
 
-Expected: ~10-20 ms added latency on 5 GHz Wi-Fi, full PC quality, decode in
-**software** on the device's four big cores (see below).
+Expected: ~10-20 ms added latency, full PC quality, decode in **software** on the
+device's four big cores (see below).
+
+### Measured on this device
+
+| Test | Result |
+|---|---|
+| Local decode, 1080p60 H.264 | 306 fps (5.1x realtime), ~1 core at realtime |
+| Local decode, 720p60 H.264 | ~640 fps (10.7x realtime) |
+| Stream 1080p60 @ 30 Mbit, 5 GHz @ -84 dBm (7.2 Mbit PHY) | hundreds of unrecoverable frames |
+| Stream 1080p60 @ 20 Mbit, 2.4 GHz @ -40 dBm (72 Mbit PHY) | **0 unrecoverable frames**, 8 IDR requests |
+| Renderer | SDL/OpenGL (Vulkan is unavailable inside the Flatpak sandbox) |
+| Decoder | FFmpeg software |
+
+**The Wi-Fi band is the whole story.** The router publishes one SSID on both
+bands; NetworkManager 1.52 does not expose `802-11-wireless.bgscan` and the
+`ath10k_snoc` (WCN3990) firmware only roams when the link drops, so the device
+stayed on 5 GHz at -84 dBm (7.2 Mbit/s) while the 2.4 GHz AP measured 97.
+Pinning the connection to 2.4 GHz (`802-11-wireless.band bg`) took the link to
+72 Mbit/s and the stream from unusable to clean. Move back to 5 GHz only when
+the device is close enough for it to actually win.
 
 ## Venus (hardware video codec): investigated, deliberately not enabled
 

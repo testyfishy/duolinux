@@ -30,10 +30,11 @@ for o in d.get("outputs", []):
 LH=$(logical_height)
 case "$LH" in ''|*[!0-9]*) LH=549 ;; esac
 
-# 42% of the panel by default. A saved preference is honoured only when it
-# actually fits; if it does not (a stale height from a different scale), fall
-# back to the fraction rather than pinning the keyboard to full height.
-H=$((LH * 42 / 100))
+# 70% of the panel by default (the owner wants a large, thumb-friendly keyboard;
+# this device has no hardware keyboard at all). A saved preference is honoured
+# only when it actually fits; if it does not (a stale height from a different
+# scale), fall back to the fraction rather than pinning it to full height.
+H=$((LH * 70 / 100))
 if [ -f "$CONF" ]; then
     want=$(cat "$CONF" 2>/dev/null)
     case "$want" in
