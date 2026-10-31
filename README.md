@@ -1,142 +1,160 @@
 # DuoLinux
 
-A dual-screen Debian workstation for the **Retroid Pocket Duo Lite** (Qualcomm QCS6125 / SM6125).
+Debian 13 (trixie) with a KDE Plasma 6.3 Wayland desktop on the **Retroid Pocket Duo Lite**
+dual-screen handheld (Qualcomm SM6125, Adreno 610). Linux runs from a microSD card and boots
+through a custom openABL; Android on internal storage is left intact.
 
-This is not a gaming frontend. It is a small Linux computer for the top half of the device: SSH,
-tmux, Tailscale, logs, and an LLM/GPU cockpit on the 1080p panel, with a launcher and touch keyboard
-on the 960p panel.
+There is no physical keyboard. Input is the built-in gamepad (through
+[InputPlumber](https://github.com/ShadowBlip/InputPlumber)) and two touchscreens, so most of this
+repo is about making a normal desktop usable with those.
 
-```
-┌──────────────────────────────────────────────┐
-│  DUO  14:32   battery 87%   tailscale up     │
-│  FLEET      server 12ms  GPU 78%  VRAM 21G   │
-│  LLM        ollama llama3.1:70b  18 tok/s    │
-│  LOCAL      CPU 12%  MEM 1.8/7.6G  TEMP 41C  │
-├──────────────────────────────────────────────┤
-│  [ Terminal ] [ SSH ] [ LLM ] [ Wi-Fi ]      │
-│  [ Files    ] [ Keys] [ Power] [ Settings ]  │
-└──────────────────────────────────────────────┘
-```
+> The first pass of this project targeted a Sway "cockpit" session; `docs/` and the Python
+> toolkit still describe that. The device now runs Plasma, and the scripts in `out/remote/` are
+> what is actually deployed.
 
-## What this is built on
+## Hardware at a glance
 
-The Duo Lite is **SM6115 / SM6125**, not the Q-7790 in the flagship Duo. That is good news:
-ROCKNIX has a mature Duo Lite port, including:
-
-- the `sm6125-retroid-pocket-duo-lite.dtb`
-- drivers/patches for both panels, the WL818S bridge, Himax and Focaltech touch, WCN3990 Wi-Fi,
-  WCN3950 Bluetooth, Adreno 610, audio and the fan
-- a signed **SM6115 ABL** that can boot Linux from microSD
-
-DuoLinux uses that hardware enablement (kernel 7.2.0 + modules + firmware) as the board support
-package, and replaces the userspace with Debian 13, Sway, and the `duodeck` cockpit. The kernel is
-GPL-2.0; provenance and the source-build path are in [`docs/BUILD.md`](docs/BUILD.md).
-
-**Buildable today.** Kernel/DTB/modules, initramfs, `boot.img`, GPT + FAT + ext4 SD image, the
-dual-screen session and the install tooling are all here. The remaining unknown is one hardware
-behaviour: whether the ROCKNIX bootloader loads our external initramfs (`rdinit=/duo-init`). The
-non-destructive `fastboot boot` path avoids that question entirely.
-
-Read [`docs/STATUS.md`](docs/STATUS.md) before flashing anything.
-
-## What you get
-
-| Piece | What it is |
+| Part | Details |
 |---|---|
-| Kernel | ROCKNIX SM6115 7.2.0 `Image`, Duo Lite DTB, 274 modules |
-| Firmware | WCN3990 Wi-Fi, WCN3950 BT, ADSP, Adreno 610 zap, UCM, from the same nightly |
-| Rootfs | Debian 13 `trixie` arm64, minimal, systemd, Sway |
-| Session | Two outputs, per-screen workspaces, touch + gamepad navigation |
-| Cockpit | `duodeck`: fleet latency, Tailscale state, GPU/LLM activity, local health |
-| Remote | OpenSSH client/server, mosh, tmux, Tailscale, sshfs |
-| Image | GPT: `ROCKNIX` (FAT32) + `STORAGE` (ext4), plus Android `boot.img` |
-| Bootloader | ROCKNIX `abl_signed-SM6115.elf`, with stock-ABL backup scripts |
-| Tools | `duo` CLI: setup, fetch, kernel, rootfs, image, probe, boot, install, collect |
+| SoC / GPU | Qualcomm SM6125 (SM6115 family), Adreno 610 |
+| Top screen | `DSI-1`, 1280x720 logical |
+| Bottom screen | `DP-1`, 1280x960, behind an Analogix DSI-to-DP bridge, placed below DSI-1 |
+| Input | built-in gamepad (via InputPlumber), two touch panels, no keyboard |
+| Boot | openABL from the ROCKNIX project, kernel + DTB from the ROCKNIX SM6115 tree |
+| Storage | Debian rootfs on microSD; Android untouched |
 
-The FAT/ext4 labels deliberately match the ROCKNIX layout (`ROCKNIX` / `STORAGE`) so the ABL finds
-the same structure it already knows.
+## What is in this repository
 
-## Quick start (Windows + WSL2)
+| Path | What it is |
+|---|---|
+| `toolkit/`, `duo`, `duo.ps1`, `Makefile` | Image tooling: fetch the kernel and firmware, build the Debian rootfs, `boot.img` and the GPT SD image, install helpers, the wvkbd patch script |
+| `configs/`, `overlay/` | Rootfs package list, setup script and the original (Sway-era) overlay |
+| `out/abl/`, `out/*.sh`, `out/patch/` | Android-side "run script as root" helpers (ABL backup/flash, SD writer, verification) and the in-place boot partition patcher |
+| `out/remote/` | Scripts deployed to the running device: settings pages, daemons, install/fix scripts |
+| `out/overlay/` | USB-gadget networking, ssh self-heal and diagnostics units |
+| `out/wvkbd-0.15/` | Forked on-screen keyboard (GPLv3), see below |
+| `out/vboard-fork/` | Vboard fork, tried and rejected; kept for reference only (GPLv3) |
+| `docs/` | Bring-up notes: boot chain, hardware map, build pipeline, status ledger |
+| `tests/` | Unit tests for the image/boot.img builders |
+
+Built images, the kernel, firmware, InputPlumber binaries, logs and SSH keys are **not** in the
+repository (see `.gitignore`).
+
+### Main features
+
+- **On-screen keyboard**: a fork of wvkbd 0.15 with two patches:
+  - `--output NAME` pins the layer-shell surface to a named output (e.g. `DP-1`);
+  - a **uinput key backend**. KWin does not implement `zwp_virtual_keyboard_v1`, so stock wvkbd
+    cannot type on Plasma at all; keys now go through a kernel uinput device.
+- **Controller mapping**: InputPlumber device profiles (`gamepad.yaml`, `mouse-left.yaml`,
+  `mouse-right.yaml`) are generated from `/etc/duo/controller.json` by `duo-controller-apply`.
+  `duo-controller` is a GTK "Controller" settings page for remapping buttons by name.
+- **`duo-backkey`** (user service): back button toggles the keyboard (it arrives as `KEY_F1` on
+  InputPlumber's virtual keyboard), Home runs a configurable action, and the right stick becomes
+  hi-res wheel scrolling (InputPlumber profiles cannot emit wheel events).
+- **`duo-pad-node`**: recreates the physical gamepad's `/dev/input/event*` node, which InputPlumber
+  hides from userspace.
+- **`duo-fan`**: a fan-curve daemon modelled on lm-sensors `fancontrol` (averaging window,
+  interpolated curve, hysteresis, dwell, MINSTART kick, MINSTOP floor, rate limiting) with
+  quiet / balanced / performance profiles. It takes `pwm1` away from the kernel thermal governor.
+- Display setup (`duo-display`, `duo-bottom-detect`), touch-to-output mapping (`duo-touch-map`,
+  `plasma-touch-map.sh`), Wi-Fi picker (`duo-wifi`), status bar (`duo-status`), clock sync
+  (`clock-unit.sh`, `clock2.sh`), mouse mode (`duo-mouse-*`), and OpenSSH over a USB gadget link as
+  a rescue path (`out/overlay`, `duo-remote.ps1`, `deploy.ps1`).
+
+## Hardware and firmware quirks
+
+- **DP-1 needs a manual detect.** The bottom panel sits behind an Analogix bridge that does not
+  report hotplug at boot. Run `echo detect > /sys/class/drm/card0-DP-1/status` (as root) before
+  the compositor starts; `duo-bottom-detect` and the unit written by `early-detect-unit.sh` do this.
+- **InputPlumber hides the physical pad.** To stop games seeing two controllers it removes the real
+  gamepad's evdev node. The right stick is only readable there, so `duo-pad-node` recreates the node
+  from sysfs (`mknod`, `root:input`, 0660).
+- **KWin has no `zwp_virtual_keyboard_v1`.** Any Wayland OSK that relies on it (stock wvkbd,
+  squeekboard-style tools) silently does nothing on Plasma; hence the uinput backend. The user
+  needs write access to `/dev/uinput` (udev rule in `overlay/etc/udev/rules.d/99-duo-uinput.rules`).
+- **Stick scaling differs per device.** The physical pad reports roughly **+/-850** on both sticks;
+  InputPlumber's virtual DualSense reports **0..255 centred at 127** (8-bit). Thresholds and
+  dead-zones must be computed from each device's `EVIOCGABS` range, not hard-coded.
+- **The fan has two masters by default.** The kernel thermal governor also drives `pwm1`;
+  `duo-fan` switches the relevant thermal zones away from it before taking over.
+
+## Deploying to the device
+
+The device is reached over the USB gadget link (`10.55.0.1`, PC side `10.55.0.2`; see
+`out/remote/duo-remote.ps1` and `set-duo-link.ps1`) or over Wi-Fi. Use your own SSH key; none is
+included here.
 
 ```powershell
-# 1. Check the machine and install the one-time build dependencies
-.\duo.ps1 setup --native
-
-# 2. Build everything (1.4 GB hardware base + Debian rootfs, ~30 min)
-.\duo.ps1 build
-
-# The built image is out/duolinux-duol.img.
-
-# 3. Plug in the Duo Lite, enable USB debugging, collect a report
-.\duo.ps1 probe
-
-# 4. Try a one-shot boot WITHOUT flashing anything
-.\duo.ps1 boot
+# copy scripts to the device and install them
+scp -i <your_key> out\remote\duo-* duo@10.55.0.1:/tmp/
+ssh -i <your_key> duo@10.55.0.1 "sudo install -m 755 /tmp/duo-* /usr/local/bin/"
 ```
 
-## Install it
+Most features have an `install-*.sh` script in `out/remote/` that writes the systemd unit and
+config, for example:
 
-**With a card reader:**
+| Feature | Installer | Unit |
+|---|---|---|
+| Fan control | `install-fan.sh`, `install-fan-settings.sh` | `duo-fan.service` (system) |
+| Back key / scroll | `install-backkey.sh` | `duo-backkey.service` (user, `systemctl --user`) |
+| Controller profiles | `install-controller-settings.sh`, `deploy-controller-v2.sh` | writes `/etc/duo/controller.json`, then `duo-controller-apply` |
+| Bottom screen detect | `early-detect-unit.sh` | `duo-bottom-detect.service` |
+| Clock | `clock-unit.sh`, `clock2.sh` | `duo-clock.service`, `duo-clock-save.timer` |
+| USB link / ssh self-heal | `out/overlay/` | `duo-usb-gadget`, `duo-sshfix`, `duo-diag` |
 
-```powershell
-.\duo.ps1 install --disk 3 --yes
+Run installers as root on the device (`sudo bash install-fan.sh`). `deploy.ps1 push <tree>` pushes
+a whole tree with a dead-man rollback timer. Many other scripts in `out/remote/` are one-off probes
+and fixes kept as a record of the bring-up; read a script before running it.
+
+Building the SD image itself is covered in `docs/BUILD.md` and `docs/BOOT.md`.
+
+### Building the keyboard
+
+```sh
+cd out/wvkbd-0.15
+make            # needs wayland, pango/cairo, xkbcommon dev packages
+./wvkbd-mobintl --output DP-1 -L 300
 ```
 
-`--disk 3` is PhysicalDrive3. `duo install` lists removable disks, refuses the system disk, refuses
-a card smaller than the image, and checks the size before writing. Use at least a 16 GB card.
-Run PowerShell **as Administrator** for a raw disk write.
+## Settings surfaces
 
-**Without a card reader (over USB):**
+| Command | What it changes |
+|---|---|
+| `duo-settings` | fuzzel menu on DSI-1: scale, keyboard size, mouse speed, Wi-Fi, apps, power |
+| `duo-controller` | Button remapping (GTK), writes `/etc/duo/controller.json`, scroll direction |
+| `duo-fan-settings` | Fan profile (`/etc/duo/fan-profile`) |
+| `duo-mouse-settings`, `duo-mouse-speed`, `duo-mouse-toggle` | Stick-as-mouse mode and speed |
+| `duo-kbd-settings` | On-screen keyboard size |
+| `duo-wifi` | Wi-Fi network picker |
+| `duo-scale`, `duo-display` | Output scale and layout |
 
-```powershell
-.\duo.ps1 install --via-adb --with-abl
-```
+## Status and known limitations
 
-This compresses the image, pushes it plus the SD writer and the SM6115 ABL to
-`/sdcard/Download/duolinux/`, and leaves two taps in Retroid's
-Settings → Handheld Settings → Advanced → Run script as root:
+- **Right-stick scrolling was only just fixed** (hi-res wheel via `duo-backkey`); expect tuning of
+  speed and dead-zone.
+- **L2/R2 are unassigned** in the default controller map.
+- **The button-mapping UI is minimal**: remap by name only, no live capture/preview, no per-app
+  profiles.
+- **No floating keyboard**: wvkbd is a docked layer-shell panel on one output; it cannot be moved
+  or resized by touch.
+- The Python toolkit and `docs/` still describe the Sway first pass; the Plasma setup is
+  reproduced by the scripts in `out/remote/`, not by the image builder.
+- The USB rescue shell (`duo-rescue-shell` and its clients) is **not** in this repository because it
+  used a hard-coded token. Re-add it only with the token read from a file outside the repo.
 
-1. `install_sd.sh` — finds the removable card, refuses anything under 16 GiB, streams the image.
-2. `flash_abl.sh` — **backs up** `abl_a`/`abl_b`, then flashes the ROCKNIX SM6115 ABL.
+## Licence
 
-Copy `abl_a.img` and `abl_b.img` off the device before relying on it. Android and internal storage
-are otherwise untouched.
+- **This project's own code** (toolkit, scripts, overlays, docs): copyright the DuoLinux author. See
+  [`LICENSE`](LICENSE).
+- **`out/wvkbd-0.15/`** is a modified copy of [wvkbd](https://git.sr.ht/~proycon/wvkbd),
+  (c) 2020 John Sullivan and contributors, **GPLv3** (`LICENSE`, `COPYING`), with
+  `os-compatibility.[ch]` under MIT/X (`COPYING_WESTON`). The changes are listed in
+  `NOTICE.duolinux` and are themselves GPLv3. The commit history shows the unmodified upstream
+  import followed by the patch.
+- **`out/vboard-fork/`** is a modified copy of [Vboard](https://github.com/mdev588/vboard),
+  (c) 2025 mdev588, (c) 2026 Archisman Panigrahi, **GPLv3** (`LICENSE`, `NOTICE.duolinux`).
+- Kernel, firmware, openABL and InputPlumber come from their upstream projects under their own
+  licences and are not redistributed here.
 
-Then power off, hold **Volume Down** at power-on, set **Boot mode = Linux**, **Boot source = SD
-Card**, and start. See [`docs/BOOT.md`](docs/BOOT.md).
-
-## Why Debian
-
-- Tailscale, OpenSSH, mosh, tmux, git, Python and Docker CLI are first-class and current.
-- `apt` is boring, which is what a device you rely on should be.
-- The heavy lifting (panels, touch, Wi-Fi, GPU) is kernel + firmware, already solved by the
-  ROCKNIX board support.
-- A small rootfs boots fine from a decent A2 microSD; 4 GB RAM is enough for terminals and SSH.
-
-## What is deliberately not here
-
-- EmulationStation, RetroArch, game launchers. This is a work machine.
-- A custom compositor. Sway already speaks two outputs and layer-shell correctly.
-- A custom kernel. We use the maintained ROCKNIX SM6115 tree until a source build is needed.
-
-## Documentation
-
-- [`docs/STATUS.md`](docs/STATUS.md) — verified vs. assumed, current blockers
-- [`docs/HARDWARE.md`](docs/HARDWARE.md) — SoC, panels, touch, firmware, DTS map
-- [`docs/BOOT.md`](docs/BOOT.md) — ABL, SD layout, recovery
-- [`docs/BRINGUP.md`](docs/BRINGUP.md) — step-by-step first boot with checkpoints
-- [`docs/DAILY.md`](docs/DAILY.md) — SSH, Tailscale, LLM cockpit, controls
-- [`docs/WIRELESS.md`](docs/WIRELESS.md) — line-by-line Wi-Fi, USB and card-reader install
-- [`docs/BUILD.md`](docs/BUILD.md) — pipeline, kernel provenance, source-build path
-- [`docs/FIXES.md`](docs/FIXES.md) — upstream/community sweep and ABL status
-
-## Safety
-
-Flash the ABL only after the SD image boots via `fastboot boot`, and always keep the stock ABL
-backup. This project refuses to write a disk it cannot identify as removable, and never touches
-internal storage unless you run `flash_abl.sh` yourself.
-
-## License
-
-Tooling and overlay: MIT. Kernel: GPL-2.0 (ROCKNIX SM6115 tree). Firmware blobs remain the property
-of their owners and are fetched from the public nightly at build time, not redistributed here.
+If you redistribute the forks, keep their licence files and copyright notices intact.
