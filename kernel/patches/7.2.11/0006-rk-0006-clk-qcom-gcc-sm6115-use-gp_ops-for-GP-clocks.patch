@@ -1,0 +1,55 @@
+From 421bf0725ca42ce41e1df948e6cf439eab559016 Mon Sep 17 00:00:00 2001
+From: Xilin Wu <sophon@radxa.com>
+Date: Sat, 31 Oct 2026 10:58:42 -0600
+Subject: rk:
+ 0006-clk-qcom-gcc-sm6115-use-gp_ops-for-GP-clocks.patch
+
+---
+ drivers/clk/qcom/gcc-sm6115.c | 10 +++-------
+ 1 file changed, 3 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/clk/qcom/gcc-sm6115.c b/drivers/clk/qcom/gcc-sm6115.c
+index 4bd2ebc15..e8bf42c59 100644
+--- a/drivers/clk/qcom/gcc-sm6115.c
++++ b/drivers/clk/qcom/gcc-sm6115.c
+@@ -1060,10 +1060,6 @@ static struct clk_rcg2 gcc_camss_top_ahb_clk_src = {
+ };
+ 
+ static const struct freq_tbl ftbl_gcc_gp1_clk_src[] = {
+-	F(25000000, P_GPLL0_OUT_AUX2, 12, 0, 0),
+-	F(50000000, P_GPLL0_OUT_AUX2, 6, 0, 0),
+-	F(100000000, P_GPLL0_OUT_AUX2, 3, 0, 0),
+-	F(200000000, P_GPLL0_OUT_AUX2, 1.5, 0, 0),
+ 	{ }
+ };
+ 
+@@ -1077,7 +1073,7 @@ static struct clk_rcg2 gcc_gp1_clk_src = {
+ 		.name = "gcc_gp1_clk_src",
+ 		.parent_data = gcc_parents_2,
+ 		.num_parents = ARRAY_SIZE(gcc_parents_2),
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_gp_ops,
+ 	},
+ };
+ 
+@@ -1091,7 +1087,7 @@ static struct clk_rcg2 gcc_gp2_clk_src = {
+ 		.name = "gcc_gp2_clk_src",
+ 		.parent_data = gcc_parents_2,
+ 		.num_parents = ARRAY_SIZE(gcc_parents_2),
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_gp_ops,
+ 	},
+ };
+ 
+@@ -1105,7 +1101,7 @@ static struct clk_rcg2 gcc_gp3_clk_src = {
+ 		.name = "gcc_gp3_clk_src",
+ 		.parent_data = gcc_parents_2,
+ 		.num_parents = ARRAY_SIZE(gcc_parents_2),
+-		.ops = &clk_rcg2_ops,
++		.ops = &clk_rcg2_gp_ops,
+ 	},
+ };
+ 
+-- 
+2.53.0
+

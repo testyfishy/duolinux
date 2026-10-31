@@ -1,0 +1,40 @@
+From 68bbe4ea3cf92a177913ed9f303a1c559d86f43b Mon Sep 17 00:00:00 2001
+From: duolinux kernel port <port@localhost>
+Date: Sat, 31 Oct 2026 10:58:55 -0600
+Subject: [PATCH 44/79] rk:
+ 0054-sound-soc-es8326-combine-stereo-volume-controls.patch
+
+---
+ sound/soc/codecs/es8326.c | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/sound/soc/codecs/es8326.c b/sound/soc/codecs/es8326.c
+index f6be930fa..42ccdf042 100644
+--- a/sound/soc/codecs/es8326.c
++++ b/sound/soc/codecs/es8326.c
+@@ -242,7 +242,6 @@ static const struct soc_enum hpvol_spkvol_switch =
+ 	SOC_ENUM_SINGLE(ES8326_HP_MISC, 6, 4, hp_spkvol_switch);
+ 
+ static const struct snd_kcontrol_new es8326_snd_controls[] = {
+-	SOC_SINGLE_TLV("DAC Playback Volume", ES8326_DACL_VOL, 0, 0xbf, 0, dac_vol_tlv),
+ 	SOC_ENUM("Playback Polarity", dacpol),
+ 	SOC_SINGLE_TLV("DAC Ramp Rate", ES8326_DAC_RAMPRATE, 0, 0x0f, 0, softramp_rate),
+ 	SOC_SINGLE_TLV("DRC Recovery Level", ES8326_DRC_RECOVERY, 0, 4, 0, drc_recovery_tlv),
+@@ -281,10 +280,10 @@ static const struct snd_kcontrol_new es8326_snd_controls[] = {
+ 	SOC_SINGLE_EXT("HPR Volume", SND_SOC_NOPM, 0, 5, 0,
+ 			es8326_hprvol_get, es8326_hprvol_set),
+ 
+-	SOC_SINGLE_TLV("HPL Playback Volume", ES8326_DACL_VOL, 0, 0xbf, 0, dac_vol_tlv),
+-	SOC_SINGLE_TLV("HPR Playback Volume", ES8326_DACR_VOL, 0, 0xbf, 0, dac_vol_tlv),
+-	SOC_SINGLE_TLV("SPKL Playback Volume", ES8326_SPKL_VOL, 0, 0xbf, 0, dac_vol_tlv),
+-	SOC_SINGLE_TLV("SPKR Playback Volume", ES8326_SPKR_VOL, 0, 0xbf, 0, dac_vol_tlv),
++	SOC_DOUBLE_R_TLV("Headphones Playback Volume", ES8326_DACL_VOL, ES8326_DACR_VOL,
++			 0, 0xbf, 0, dac_vol_tlv),
++	SOC_DOUBLE_R_TLV("Speakers Playback Volume", ES8326_SPKL_VOL, ES8326_SPKR_VOL,
++			 0, 0xbf, 0, dac_vol_tlv),
+ 
+ 	SOC_ENUM("HPVol SPKVol Switch", hpvol_spkvol_switch),
+ };
+-- 
+2.53.0
+

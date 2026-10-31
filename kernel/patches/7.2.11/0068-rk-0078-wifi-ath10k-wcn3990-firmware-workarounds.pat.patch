@@ -1,0 +1,53 @@
+From 53ce93eb9acc3d2154be1c4a5ca97f90484f8bd3 Mon Sep 17 00:00:00 2001
+From: Noxwell <beebono@gmail.com>
+Date: Sat, 3 Oct 2026 12:00:00 -0500
+Subject: rk: 0078-wifi-ath10k-wcn3990-firmware-workarounds.patch
+
+---
+ drivers/net/wireless/ath/ath10k/mac.c     |  8 ++++++++
+ drivers/net/wireless/ath/ath10k/thermal.c | 10 ++++++++++
+ 2 files changed, 18 insertions(+)
+
+diff --git a/drivers/net/wireless/ath/ath10k/mac.c b/drivers/net/wireless/ath/ath10k/mac.c
+index 746867b6a..b4c7b421e 100644
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -3528,6 +3528,14 @@ static int ath10k_update_channel_list(struct ath10k *ar)
+ 			passive = channel->flags & IEEE80211_CHAN_NO_IR;
+ 			ch->passive = passive;
+ 
++			/* Force passive scan on 5GHz to work around WCN3990
++			 * firmware bug where active scan doesn't tune the
++			 * radio on 5GHz non-DFS channels.
++			 */
++			if (QCA_REV_WCN3990(ar) &&
++			    band == NL80211_BAND_5GHZ)
++				ch->passive = true;
++
+ 			/* the firmware is ignoring the "radar" flag of the
+ 			 * channel and is scanning actively using Probe Requests
+ 			 * on "Radar detection"/DFS channels which are not
+diff --git a/drivers/net/wireless/ath/ath10k/thermal.c b/drivers/net/wireless/ath/ath10k/thermal.c
+index 9bb486f8e..5987df325 100644
+--- a/drivers/net/wireless/ath/ath10k/thermal.c
++++ b/drivers/net/wireless/ath/ath10k/thermal.c
+@@ -136,6 +136,16 @@ void ath10k_thermal_set_throttling(struct ath10k *ar)
+ 	if (!ar->wmi.ops->gen_pdev_set_quiet_mode)
+ 		return;
+ 
++	/* WCN3990 firmware crashes on quiet mode despite advertising support.
++	 * See also commit 53884577fbcef ("ath10k: skip sending quiet mode
++	 * cmd for WCN3990").
++	 */
++	if (QCA_REV_WCN3990(ar)) {
++		ath10k_dbg(ar, ATH10K_DBG_BOOT,
++			   "skip quiet mode for WCN3990 (known crash trigger)\n");
++		return;
++	}
++
+ 	if (ar->state != ATH10K_STATE_ON)
+ 		return;
+ 
+-- 
+2.53.0
+

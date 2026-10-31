@@ -1,0 +1,26 @@
+From c2ed7d218277fe441cafeb6ab59c41ec9d810754 Mon Sep 17 00:00:00 2001
+From: Noxwell <beebono@gmail.com>
+Date: Sat, 3 Oct 2026 12:00:00 -0500
+Subject: rk:
+ 0077-clk-qcom-gcc-sm6125-use-retention-for-usb-power-domain.patch
+
+---
+ drivers/clk/qcom/gcc-sm6125.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/clk/qcom/gcc-sm6125.c b/drivers/clk/qcom/gcc-sm6125.c
+index 14ab55248..9e3ac227d 100644
+--- a/drivers/clk/qcom/gcc-sm6125.c
++++ b/drivers/clk/qcom/gcc-sm6125.c
+@@ -3766,7 +3766,7 @@ static struct gdsc usb30_prim_gdsc = {
+ 	.pd = {
+ 		.name = "usb30_prim_gdsc",
+ 	},
+-	.pwrsts = PWRSTS_OFF_ON,
++	.pwrsts = PWRSTS_RET_ON,
+ };
+ 
+ static struct gdsc ufs_phy_gdsc = {
+-- 
+2.53.0
+

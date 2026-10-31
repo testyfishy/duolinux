@@ -1,0 +1,25 @@
+From 3185cba12c6fba7f1ef8822c7a88e97a039911f5 Mon Sep 17 00:00:00 2001
+From: duolinux kernel port <port@localhost>
+Date: Sat, 31 Oct 2026 10:58:42 -0600
+Subject: [PATCH 08/79] rk: 0008_gcc_usb_gdsc_retention.patch
+
+---
+ drivers/clk/qcom/gcc-sm6115.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/clk/qcom/gcc-sm6115.c b/drivers/clk/qcom/gcc-sm6115.c
+index f1c1f5128..eae60b1d8 100644
+--- a/drivers/clk/qcom/gcc-sm6115.c
++++ b/drivers/clk/qcom/gcc-sm6115.c
+@@ -3206,7 +3206,7 @@ static struct gdsc gcc_usb30_prim_gdsc = {
+ 	.pd = {
+ 		.name = "gcc_usb30_prim",
+ 	},
+-	.pwrsts = PWRSTS_OFF_ON,
++	.pwrsts = PWRSTS_RET_ON,
+ };
+ 
+ static struct gdsc gcc_vcodec0_gdsc = {
+-- 
+2.53.0
+

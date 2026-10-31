@@ -1,0 +1,170 @@
+# SM6115 / Retroid Pocket Duo Lite series, rebased onto Linux 7.2.11
+#
+# base:   vanilla 7.2.11 (kernel.org tarball)
+# source: ROCKNIX projects/ROCKNIX/devices/SM6115/patches/linux
+#         snapshot 2026-10-29; the series was generated against 7.2.0
+# count:  79
+#
+# 'author' is taken from the original patch header. Where it is empty the
+# source patch carries no From:/Author: line at all; those commits are
+# attributed to the port identity and MUST NOT be sent upstream as-is.
+#
+#     status subject / author
+0001  asis   rk: 0001-gpu-drm-panel-add-mangmi-airx-panel.patch
+               Philippe Simons <simons.philippe@gmail.com>
+0002  asis   rk: 0002-add-mq66-bm5460bb1-panel.patch
+               Philippe Simons <simons.philippe@gmail.com>
+0003  asis   [PATCH 03/79] rk: 0003-gpu-drm-panel-add-mangmi-td4310-panel.patch
+               duolinux kernel port <port@localhost>
+0004  asis   rk:
+               Philippe Simons <simons.philippe@gmail.com>
+0005  asis   [PATCH 05/79] rk: 0005-gpu-drm-panel-add-mangmi-gh7005-panel.patch
+               duolinux kernel port <port@localhost>
+0006  asis   rk:
+               Xilin Wu <sophon@radxa.com>
+0007  asis   rk:
+               Dmitry Baryshkov <dmitry.baryshkov@oss.qualcomm.com>
+0008  asis   [PATCH 08/79] rk: 0008_gcc_usb_gdsc_retention.patch
+               duolinux kernel port <port@localhost>
+0009  asis   rk: 0009-input-joystick-add-mangmi-airx-driver.patch
+               Philippe Simons <simons.philippe@gmail.com>
+0010  asis   rk:
+               Xilin Wu <sophon@radxa.com>
+0011  asis   [PATCH 11/79] rk:
+               duolinux kernel port <port@localhost>
+0012  asis   rk: 0012-add-pm6125-pwm.patch
+               Philippe Simons <simons.philippe@gmail.com>
+0013  asis   [PATCH 13/79] rk: 0013-leds-aw200xx-add-vdd-supply-regulator.patch
+               duolinux kernel port <port@localhost>
+0014  asis   rk: 0015-dts-sm6115-add-venus-video-codec-node.patch
+               Dmitry Baryshkov <dmitry.baryshkov@oss.qualcomm.com>
+0015  asis   [PATCH 15/79] rk: 0016-dts-sm6115-add-mpm-wake-controller.patch
+               duolinux kernel port <port@localhost>
+0016  asis   [PATCH 16/79] rk: 0017-cpuidle-psci-defer-to-late_initcall_sync.patch
+               duolinux kernel port <port@localhost>
+0017  asis   [PATCH 17/79] rk:
+               duolinux kernel port <port@localhost>
+0018  asis   [PATCH 18/79] rk:
+               duolinux kernel port <port@localhost>
+0019  asis   [PATCH 19/79] rk:
+               duolinux kernel port <port@localhost>
+0020  asis   rk:
+               spycat88 <spycat88@users.noreply.github.com>
+0021  asis   rk:
+               sunshineinabox <aqemail@gmail.com>
+0022  asis   [PATCH 22/79] rk:
+               duolinux kernel port <port@localhost>
+0023  asis   [PATCH 23/79] rk:
+               duolinux kernel port <port@localhost>
+0024  asis   [PATCH 24/79] rk:
+               duolinux kernel port <port@localhost>
+0025  asis   [PATCH 25/79] rk:
+               duolinux kernel port <port@localhost>
+0026  asis   rk: 0027-power-supply-add-cx221x-battery-gauge.patch
+               Philippe Simons <simons.philippe@gmail.com>
+0027  asis   [PATCH 27/79] rk: 0028-power-supply-bq256xx-add-sgm41515-alias.patch
+               duolinux kernel port <port@localhost>
+0028  asis   [PATCH 28/79] rk: 0029-power-supply-bq256xx-reset-chip-on-init.patch
+               duolinux kernel port <port@localhost>
+0029  asis   [PATCH 29/79] rk:
+               duolinux kernel port <port@localhost>
+0030  asis   [PATCH 30/79] rk:
+               duolinux kernel port <port@localhost>
+0031  asis   [PATCH 31/79] rk: 0032-power-supply-bq256xx-software-jeita.patch
+               duolinux kernel port <port@localhost>
+0032  asis   [PATCH 32/79] rk:
+               duolinux kernel port <port@localhost>
+0033  asis   [PATCH 33/79] rk:
+               duolinux kernel port <port@localhost>
+0034  asis   [PATCH 34/79] rk:
+               duolinux kernel port <port@localhost>
+0035  asis   rk:
+               Val Packett <val@packett.cool>
+0036  asis   rk:
+               Val Packett <val@packett.cool>
+0037  asis   [PATCH 37/79] rk:
+               duolinux kernel port <port@localhost>
+0038  asis   [PATCH 38/79] rk:
+               duolinux kernel port <port@localhost>
+0039  asis   [PATCH 39/79] rk: 0046-input-touchscreen-hynitron-add-cst3530.patch
+               duolinux kernel port <port@localhost>
+0040  asis   [PATCH 40/79] rk: 0047-backlight-pwm_bl-add-brightness-scale.patch
+               duolinux kernel port <port@localhost>
+0041  asis   [PATCH 41/79] rk:
+               duolinux kernel port <port@localhost>
+0042  asis   [PATCH 42/79] rk:
+               duolinux kernel port <port@localhost>
+0043  asis   [PATCH 43/79] rk: 0053-sound-soc-es8326-add-vdd-supply.patch
+               duolinux kernel port <port@localhost>
+0044  asis   [PATCH 44/79] rk:
+               duolinux kernel port <port@localhost>
+0045  asis   [PATCH 45/79] rk:
+               duolinux kernel port <port@localhost>
+0046  asis   [PATCH 46/79] rk: 0056-fusb302-map-collision-to-tx-discarded.patch
+               duolinux kernel port <port@localhost>
+0047  asis   [PATCH 47/79] rk: 0057-tcpm-requeue-control-msg-on-eagain.patch
+               duolinux kernel port <port@localhost>
+0048  asis   [PATCH 48/79] rk:
+               duolinux kernel port <port@localhost>
+0049  asis   [PATCH 49/79] rk:
+               duolinux kernel port <port@localhost>
+0050  asis   rk:
+               Noxwell <beebono@gmail.com>
+0051  asis   rk: 0061-regulator-add-qcom-pmi632-lcdb-driver.patch
+               Noxwell <beebono@gmail.com>
+0052  asis   rk:
+               Noxwell <beebono@gmail.com>
+0053  asis   rk: 0063-input-add-rsinput-gamepad.patch
+               Philippe Simons <simons.philippe@gmail.com>
+0054  asis   rk: 0064-input-himax_hx83112b-add-hx83112a.patch
+               Noxwell <beebono@gmail.com>
+0055  asis   rk:
+               sunshineinabox <aqemail@gmail.com>
+0056  asis   rk:
+               Noxwell <beebono@gmail.com>
+0057  asis   [PATCH 57/79] rk: 0067-usb-typec-fusb302-reset-chip-on-shutdown.patch
+               duolinux kernel port <port@localhost>
+0058  asis   rk:
+               Noxwell <beebono@gmail.com>
+0059  asis   rk:
+               Noxwell <beebono@gmail.com>
+0060  asis   rk:
+               Noxwell <beebono@gmail.com>
+0061  asis   rk:
+               Noxwell <beebono@gmail.com>
+0062  asis   rk: 0072-drm-bridge-add-wl818s-dp-to-mipi-bridge.patch
+               Noxwell <beebono@gmail.com>
+0063  asis   rk:
+               Noxwell <beebono@gmail.com>
+0064  asis   rk:
+               Noxwell <beebono@gmail.com>
+0065  asis   rk:
+               Noxwell <beebono@gmail.com>
+0066  asis   rk:
+               Noxwell <beebono@gmail.com>
+0067  asis   rk:
+               Noxwell <beebono@gmail.com>
+0068  asis   rk: 0078-wifi-ath10k-wcn3990-firmware-workarounds.patch
+               Noxwell <beebono@gmail.com>
+0069  asis   [PATCH 69/79] rk:
+               duolinux kernel port <port@localhost>
+0070  asis   [PATCH 70/79] rk:
+               duolinux kernel port <port@localhost>
+0071  asis   rk:
+               sunshineinabox <aqemail@gmail.com>
+0072  asis   rk: 0200-media-qcom-add-sde-rotator-m2m-driver.patch
+               sunshineinabox <aqemail@gmail.com>
+0073  asis   rk: 0201-drm-msm-dpu-sde-rotator-helper.patch
+               sunshineinabox <aqemail@gmail.com>
+0074  asis   rk: 0202-drm-msm-dpu-whole-output-plane-rotation.patch
+               sunshineinabox <aqemail@gmail.com>
+0075  asis   rk: 0205-drm-msm-dpu-enable-qseed-detail-enhancer.patch
+               tiopex <tiopxyz@gmail.com>
+0076  asis   rk: 0207-drm-msm-dpu-enable-smart-dma-on-sm6115.patch
+               sunshineinabox <aqemail@gmail.com>
+0077  asis   rk:
+               sunshineinabox <aqemail@gmail.com>
+0078  asis   rk: 0210-drm-msm-dpu-qseed-filter-luts.patch
+               sunshineinabox <aqemail@gmail.com>
+0079  asis   rk: 0211-drm-msm-dpu-sm6115-vbif-non-shareable.patch
+               sunshineinabox <aqemail@gmail.com>

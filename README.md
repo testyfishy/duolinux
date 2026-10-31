@@ -41,6 +41,7 @@ repo is about making a normal desktop usable with those.
 | `out/overlay/` | USB-gadget networking, ssh self-heal and diagnostics units |
 | `out/wvkbd-0.15/` | Forked on-screen keyboard (GPLv3), see below |
 | `out/inputplumber-fork/` | Patch adding axis-to-wheel support to InputPlumber, plus publishing notes |
+| `kernel/patches/7.2.11/` | The 79-patch SM6115 series rebased onto Linux 7.2.11, cleanly applicable in order, with the original authors preserved and a README covering how to carry it to a newer stable kernel |
 | `toolkit/kernel/` | The kernel: port the SM6115 series to a new stable base, build it with netfilter, and every check used before and after installing (boot-critical built-ins, config diff, DTB compatibility, suspend, charging) |
 | `docs/` | Bring-up notes: boot chain, hardware map, build pipeline, status ledger |
 | `docs/KERNEL.md` | 7.2.11-nf: how the series is rebased, the one conflict and how it is resolved, how the port is proven, install and rollback |

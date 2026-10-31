@@ -1,0 +1,56 @@
+From 9c36f54058f796e3b6334de753a8eb9e291c780d Mon Sep 17 00:00:00 2001
+From: sunshineinabox <aqemail@gmail.com>
+Date: Sat, 24 Oct 2026 16:08:11 -0700
+Subject: rk:
+ 0081-interconnect-qcom-icc-rpm-skip-unchanged-bandwidth-requests.patch
+
+---
+ drivers/interconnect/qcom/icc-rpm.c | 11 +++++++++++
+ drivers/interconnect/qcom/icc-rpm.h |  2 ++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/drivers/interconnect/qcom/icc-rpm.c b/drivers/interconnect/qcom/icc-rpm.c
+index 23a1d116e..ac7ddb6ea 100644
+--- a/drivers/interconnect/qcom/icc-rpm.c
++++ b/drivers/interconnect/qcom/icc-rpm.c
+@@ -215,6 +215,14 @@ static int qcom_icc_rpm_set(struct qcom_icc_node *qn, u64 *bw, bool ignore_enxio
+ 	for (rpm_ctx = 0; rpm_ctx < QCOM_SMD_RPM_STATE_NUM; rpm_ctx++) {
+ 		bw_bps = icc_units_to_bps(bw[rpm_ctx]);
+ 
++		/*
++		 * The RPM keeps the last request per resource, so resending an unchanged
++		 * value only costs a blocking SMD round trip. Every cpufreq transition votes
++		 * its OPP's peak through here, and that rarely moves these sums.
++		 */
++		if (qn->rpm_bw_sent[rpm_ctx] && qn->rpm_bw[rpm_ctx] == bw_bps)
++			continue;
++
+ 		if (qn->mas_rpm_id != -1) {
+ 			ret = qcom_icc_rpm_smd_send(rpm_ctx,
+ 						    RPM_BUS_MASTER_REQ,
+@@ -240,6 +248,9 @@ static int qcom_icc_rpm_set(struct qcom_icc_node *qn, u64 *bw, bool ignore_enxio
+ 					return ret;
+ 			}
+ 		}
++
++		qn->rpm_bw[rpm_ctx] = bw_bps;
++		qn->rpm_bw_sent[rpm_ctx] = true;
+ 	}
+ 
+ 	return 0;
+diff --git a/drivers/interconnect/qcom/icc-rpm.h b/drivers/interconnect/qcom/icc-rpm.h
+index 7d1cb2efa..eb1c42ed9 100644
+--- a/drivers/interconnect/qcom/icc-rpm.h
++++ b/drivers/interconnect/qcom/icc-rpm.h
+@@ -117,6 +117,8 @@ struct qcom_icc_node {
+ 	const struct rpm_clk_resource *bus_clk_desc;
+ 	u64 sum_avg[QCOM_SMD_RPM_STATE_NUM];
+ 	u64 max_peak[QCOM_SMD_RPM_STATE_NUM];
++	u64 rpm_bw[QCOM_SMD_RPM_STATE_NUM];
++	bool rpm_bw_sent[QCOM_SMD_RPM_STATE_NUM];
+ 	int mas_rpm_id;
+ 	int slv_rpm_id;
+ 	struct qcom_icc_qos qos;
+-- 
+2.53.0
+
