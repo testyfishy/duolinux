@@ -100,6 +100,38 @@ busctl call org.shadowblip.InputPlumber \
 
 The second command should print `mouse-left.yaml` rather than an empty string.
 
+## Window placement across the two panels
+
+KWin decides where a new window goes from `kwinrc [Windows] Placement`; with `ActiveMouseScreen=true`
+the "active" screen follows the pointer. This machine now uses:
+
+```ini
+[Windows]
+Placement=UnderMouse      # new windows appear on the screen under the pointer
+ActiveMouseScreen=true
+```
+
+Since the pointer is the left stick in mouse mode, aiming at the bottom panel and launching an app
+puts it there. The previous value was `Maximizing`, which let KWin pick the active screen and made
+the result feel arbitrary.
+
+Moving an existing window is KWin's `Window to Next Screen` / `Window to Previous Screen` global
+shortcut (`Meta+Shift+Right` / `Meta+Shift+Left`), or `Window to Screen 0/1/2` (unbound by default;
+on this machine `DSI-1` is screen 0 and `DP-1` is screen 1). Per-application overrides are KWin
+**Window Rules** with a `Screen` property.
+
+Because there is no physical keyboard, `duo-backkey` exposes the shortcut to the pad:
+
+| Chord | Action |
+|---|---|
+| **Select + D-pad Right** | move the active window to the other panel |
+| **Select + D-pad Left** | move it back |
+
+It invokes `org.kde.kglobalaccel /component/kwin invokeShortcut "Window to Next Screen"` over D-Bus,
+so KWin keeps ownership of placement. Note the d-pad also emits arrow keys (InputPlumber's mapping),
+so the focused app may see one arrow press with the chord; if that proves annoying, bind the chord to
+the bumpers instead.
+
 ## Battery indicator
 
 One indicator only: **Plasma's own tray battery**. The standalone
