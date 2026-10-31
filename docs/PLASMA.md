@@ -120,17 +120,19 @@ shortcut (`Meta+Shift+Right` / `Meta+Shift+Left`), or `Window to Screen 0/1/2` (
 on this machine `DSI-1` is screen 0 and `DP-1` is screen 1). Per-application overrides are KWin
 **Window Rules** with a `Screen` property.
 
-Because there is no physical keyboard, `duo-backkey` exposes the shortcut to the pad:
+Because there is no physical keyboard, the two buttons that would otherwise be unused are mapped to
+it in the InputPlumber profile (`/etc/inputplumber/profiles/mouse-left.yaml`):
 
-| Chord | Action |
-|---|---|
-| **Select + D-pad Right** | move the active window to the other panel |
-| **Select + D-pad Left** | move it back |
+| Button | Profile mapping | Action |
+|---|---|---|
+| **Select** | `Select` → `KeyF13` | send the focused window to the other panel |
+| **Start** | `Start` → `KeyF14` | send it back |
 
-It invokes `org.kde.kglobalaccel /component/kwin invokeShortcut "Window to Next Screen"` over D-Bus,
-so KWin keeps ownership of placement. Note the d-pad also emits arrow keys (InputPlumber's mapping),
-so the focused app may see one arrow press with the chord; if that proves annoying, bind the chord to
-the bumpers instead.
+`duo-backkey` watches the InputPlumber keyboard node for F13/F14 and invokes
+`org.kde.kglobalaccel /component/kwin invokeShortcut "Window to Next Screen"` (or Previous) over
+D-Bus, so KWin still owns placement. A chord was tried first and could not work: the d-pad is mapped
+to arrow keys and Select was unmapped, so the target device never emitted `BTN_DPAD_*`/`BTN_SELECT`.
+
 
 ## Battery indicator
 

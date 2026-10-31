@@ -1,4 +1,4 @@
---- a/src/input/target/orig-mod.rs
+--- a/src/input/target/mod.rs
 +++ b/src/input/target/mod.rs
 @@ -414,6 +414,15 @@
          Ok(vec![])
@@ -77,7 +77,7 @@
                      }
                  }
  
---- a/src/input/target/orig-keyboard.rs
+--- a/src/input/target/keyboard.rs
 +++ b/src/input/target/keyboard.rs
 @@ -431,4 +431,10 @@
      }
@@ -91,7 +91,7 @@
 +        false
 +    }
 +}
---- a/src/input/target/orig-mouse.rs
+--- a/src/input/target/mouse.rs
 +++ b/src/input/target/mouse.rs
 @@ -1,9 +1,13 @@
 -use std::{collections::HashMap, error::Error, time::Instant};
@@ -174,7 +174,7 @@
          // Translate and emit the event(s)
          let evdev_events = self.translate_event(event);
          if let Err(e) = self.device.emit(evdev_events.as_slice()) {
-@@ -187,14 +220,27 @@
+@@ -187,14 +220,22 @@
      fn clear_state(&mut self) {
          self.state.mouse_velocity = (0.0, 0.0);
          self.state.mouse_remainder = (0.0, 0.0);
@@ -184,11 +184,6 @@
  }
  
  impl TargetOutputDevice for MouseDevice {
-+    /// Only the integrator needs a timer: with zero motion and wheel velocity
-+    /// there is nothing to advance, and events still arrive by command.
-+    fn needs_poll(&self) -> bool {
-+        self.state.mouse_velocity != (0.0, 0.0) || self.state.wheel_velocity != 0.0
-+    }
 +
      /// Move the mouse based on the given input event translation
      fn poll(&mut self, _: &Option<CompositeDeviceClient>) -> Result<Vec<OutputEvent>, OutputError> {
@@ -204,7 +199,7 @@
          self.last_poll = Instant::now();
  
          // Calculate how much the mouse should move based on the current mouse velocity
-@@ -249,6 +295,36 @@
+@@ -249,6 +290,36 @@
              }
          }
  

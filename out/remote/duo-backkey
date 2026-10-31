@@ -36,6 +36,8 @@ EV_KEY = 0x01
 EV_ABS = 0x03
 KEY_F1 = 59
 KEY_HOME = 102
+KEY_F13 = 183
+KEY_F14 = 184
 BTN_SELECT = 314
 BTN_DPAD_LEFT = 544
 BTN_DPAD_RIGHT = 545
@@ -363,6 +365,12 @@ def main() -> int:
                         continue
                     last_abs[path] = time.time()
                     active_source = path
+                elif kind == EV_KEY and code in (KEY_F13, KEY_F14):
+                    # Select / Start are mapped to F13 / F14 in the InputPlumber
+                    # profile, so these arrive on the InputPlumber keyboard node.
+                    if value:
+                        move_window("next" if code == KEY_F13 else "previous")
+                    continue
                 elif kind == EV_KEY and code in (BTN_SELECT, BTN_DPAD_LEFT, BTN_DPAD_RIGHT):
                     # Select + d-pad moves the active window between the two
                     # panels, so windows can be placed without a keyboard.
