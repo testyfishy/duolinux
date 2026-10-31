@@ -6,6 +6,7 @@ Two patches, applied in order:
 |---|---|
 | `0001-axis-to-wheel.patch` | a stick pointed at a wheel target produced nothing |
 | `0002-idle-backoff.patch` | the source loop polled every 2.5 ms even when idle, ~11 % of a core |
+| `0003-needs-poll.patch` | the keyboard target's timer called an empty `poll()` 125 times a second |
 
 ## Axis to wheel
 
@@ -56,6 +57,22 @@ empty polls: the sleep doubles every 20 further empty polls up to 16 ms, and any
 event resets it immediately. Input latency at idle is at most 16 ms, well under a
 frame, and force-feedback commands are drained in the same loop so they are
 delayed by the same small amount.
+
+## Keyboard target: no timer
+
+The keyboard target's `poll()` is the default empty implementation and key
+presses arrive as `TargetCommand::WriteEvent`, which wakes the loop through its
+command channel. Its inherited 8 ms timer therefore called an empty function 125
+times a second. `0003-needs-poll.patch` adds `TargetOutputDevice::needs_poll()`
+(default true), makes the keyboard return false, and has the target loop block on
+the command channel when it is false, with `MissedTickBehavior::Delay` so
+returning to polling does not fire a burst of ticks.
+
+The mouse deliberately keeps its fixed 16 ms poll: its motion is a velocity
+integrated over time, and an earlier version that stopped the timer at zero
+velocity proved unreliable in use. The patch still clamps `dt` to 50 ms and
+resets `last_poll` when velocity goes from zero to non-zero.
+
 
 ## Building and installing
 
