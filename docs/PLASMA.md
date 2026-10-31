@@ -231,3 +231,33 @@ to Kameleon, not to Plasma or the kernel; tracked upstream and left alone rather
 than patched locally. The only LEDs on the system are mmc0, mmc1 and
 gb:status.
 
+
+## Screen layout and scaling (exact scales only)
+
+Both panels use scale **1.6**, which divides both native resolutions exactly, so
+no client has to live with fractional logical geometry:
+
+| Output | Native | Scale | Logical | Position |
+|---|---|---|---|---|
+| DSI-1 (top, rotated) | 1920x1080 | 1.6 | 1200x675 | 0,0 |
+| DP-1 (bottom) | 1280x960 | 1.6 | 800x600 | 0,675 |
+
+Why it matters: at 1.75 the bottom screen was 731.43 logical px wide, so a
+layer-shell surface could never sit flush and wvkbd showed a hairline of
+background at the bottom/right edges. At 1.6 the keyboard is flush.
+
+The position matters too. After changing the top scale its logical height became
+675, so DP-1 had to move from y=618 to y=675; otherwise the screens overlap by
+57 px and the top panel draws into the bottom display.
+
+    kscreen-doctor output.DSI-1.scale.1.6
+    kscreen-doctor output.DP-1.scale.1.6
+    kscreen-doctor output.DP-1.position.0,675
+
+## A taskbar on both screens
+
+Plasma 6.3 has no "duplicate panel" button, so the second panel is created with
+the scripting API, copying the first panel's applets in order
+(`marginsseparator, digitalclock, icontasks, kickoff, systemtray`) at the same
+height and alignment. `toolkit/apps/add-second-taskbar.sh` does this and is
+idempotent: it refuses to add a second panel to a screen that already has one.
