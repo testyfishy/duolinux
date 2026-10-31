@@ -64,6 +64,10 @@ ACTIONS: dict[str, dict | None] = {
     "right_click": {"mouse": {"button": "Right"}},
     "scroll_up": {"mouse": {"button": "WheelUp"}},
     "scroll_down": {"mouse": {"button": "WheelDown"}},
+    # Window movement is mouse-mode only: in gamepad mode Select/Start keep
+    # passing through so games still receive them.
+    "window_next": {"keyboard": "KeyF13"},
+    "window_prev": {"keyboard": "KeyF14"},
 }
 
 MANAGED_BUTTONS = {name["button"] for name, _ in BUTTONS.values() if "button" in name}
@@ -100,6 +104,22 @@ def build_entries(bindings: dict[str, str], with_passthrough: bool) -> list[dict
             continue          # e.g. "home", handled by the key daemon
         source, passthrough = BUTTONS[button_id]
         target = ACTIONS.get(action)
+        # Window movement is a mouse-mode convenience. In gamepad mode the button
+        # keeps passing through unchanged so games still see Select/Start.
+        if action.startswith("window_"):
+            if with_passthrough and passthrough:
+                entries.append({
+                    "name": f"Duo {button_id}",
+                    "source_event": {"gamepad": source},
+                    "target_events": [{"gamepad": passthrough}],
+                })
+            elif target:
+                entries.append({
+                    "name": f"Duo {button_id}",
+                    "source_event": {"gamepad": source},
+                    "target_events": [target],
+                })
+            continue
         # "none" means leave the button alone. Analog triggers have no desktop
         # use, so an unassigned trigger is dropped entirely rather than being
         # passed through, which is what the user asked for.
