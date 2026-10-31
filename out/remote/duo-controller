@@ -43,6 +43,7 @@ ACTIONS: dict[str, tuple[str, str | None]] = {
     "scroll_down": ("Scroll down (mouse wheel)", None),
     "window_next": ("Move window to the other screen (mouse mode)", None),
     "window_prev": ("Move window back (mouse mode)", None),
+    "window_close": ("Close the focused window (mouse mode)", None),
 }
 
 # Physical button codes as the kernel reports them, mapped to the rows above.

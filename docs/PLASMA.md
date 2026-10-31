@@ -125,13 +125,13 @@ it in the InputPlumber profile (`/etc/inputplumber/profiles/mouse-left.yaml`):
 
 | Button | Profile mapping | Action |
 |---|---|---|
-| **Select** | `Select` → `KeyF13` | send the focused window to the other panel |
-| **Start** | `Start` → `KeyF14` | send it back |
+| **Start** | `Start` → `KeyF14` | send the focused window to the other panel (toggles back and forth) |
+| **Select** | `Select` → `KeyF15` | close the focused window |
 
-`duo-backkey` watches the InputPlumber keyboard node for F13/F14 and invokes
-`org.kde.kglobalaccel /component/kwin invokeShortcut "Window to Next Screen"` (or Previous) over
-D-Bus, so KWin still owns placement. A chord was tried first and could not work: the d-pad is mapped
-to arrow keys and Select was unmapped, so the target device never emitted `BTN_DPAD_*`/`BTN_SELECT`.
+`duo-backkey` watches the InputPlumber keyboard node for F14/F15 and invokes
+`org.kde.kglobalaccel /component/kwin invokeShortcut "Window to Previous Screen"` / `"Window Close"`
+over D-Bus, so KWin still owns placement and closing. In *gamepad mode* both buttons still pass
+through to games, because the generator only emits these actions into the mouse profiles.
 
 
 ## Battery indicator
