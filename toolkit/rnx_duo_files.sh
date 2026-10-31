@@ -1,7 +1,7 @@
 #!/bin/bash
 set -u
 S=/mnt/rnx/SYSTEM
-OUT="/mnt/c/Users/user/Documents/Default Project/duolinux/out/rnx-port/duo"
+OUT="/mnt/c/path/to/duolinux/out/rnx-port/duo"
 mkdir -p "$OUT"
 
 CANDIDATES="

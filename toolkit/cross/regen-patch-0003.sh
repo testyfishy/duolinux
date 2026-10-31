@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SRC="$HOME/duo-build/inputplumber/src"
-OUT="/mnt/c/Users/user/Documents/Default Project/duolinux/out/inputplumber-fork/0003-needs-poll.patch"
+OUT="/mnt/c/path/to/duolinux/out/inputplumber-fork/0003-needs-poll.patch"
 BASE=https://raw.githubusercontent.com/ShadowBlip/InputPlumber/v0.82.0
 
 cd "$SRC"

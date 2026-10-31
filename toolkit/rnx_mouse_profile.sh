@@ -1,7 +1,7 @@
 #!/bin/bash
 set -u
 S=/mnt/rnx/SYSTEM
-OUT="/mnt/c/Users/user/Documents/Default Project/duolinux/out/rnx-port/profiles"
+OUT="/mnt/c/path/to/duolinux/out/rnx-port/profiles"
 mkdir -p "$OUT"
 
 for f in mouse_keyboard_wasd.yaml default.yaml; do

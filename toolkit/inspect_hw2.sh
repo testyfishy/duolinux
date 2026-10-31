@@ -1,5 +1,5 @@
 #!/bin/bash
-cd "/mnt/c/Users/user/Documents/Default Project/duolinux/out" || exit 1
+cd "/mnt/c/path/to/duolinux/out" || exit 1
 D="duolinux-duol.img?offset=537919488"
 
 echo "===== ath10k modules:"
@@ -18,7 +18,7 @@ grep -i -E "ath10k|cfg80211|mac80211|wcn" /tmp/mdep.txt 2>/dev/null | head -20
 rm -f /tmp/mdep.txt
 
 echo "===== extract DTB from the boot partition and look for radios/panels:"
-cd "/mnt/c/Users/user/Documents/Default Project/duolinux/out"
+cd "/mnt/c/path/to/duolinux/out"
 mcopy -o -n -i "duolinux-duol.img@@1048576" ::/dtbs/qcom/sm6125-retroid-pocket-duo-lite.dtb /tmp/duo.dtb 2>/dev/null
 ls -l /tmp/duo.dtb
 which dtc || echo "no dtc"

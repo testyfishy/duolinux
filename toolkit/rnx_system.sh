@@ -1,7 +1,7 @@
 #!/bin/bash
 # Inventory the ROCKNIX system partition: what do they ship for this hardware?
 set -e
-OUT="/mnt/c/Users/user/Documents/Default Project/duolinux/out"
+OUT="/mnt/c/path/to/duolinux/out"
 IMG="$OUT/rocknix.img"
 MNT=/mnt/rnx
 

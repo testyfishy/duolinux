@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-cd "/mnt/c/Users/user/Documents/Default Project/duolinux" || exit 1
+cd "/mnt/c/path/to/duolinux" || exit 1
 
 echo "=== restoring arm64 binaries from the cached .debs (undo CRLF damage)"
 for d in /tmp/duodebs/*.deb; do

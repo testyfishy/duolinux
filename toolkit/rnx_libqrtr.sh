@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 S=/mnt/rnx/SYSTEM
-DEST="/mnt/c/Users/user/Documents/Default Project/duolinux/out/rnx-port"
+DEST="/mnt/c/path/to/duolinux/out/rnx-port"
 
 echo "=== libqrtr and friends"
 unsquashfs -ll "$S" 2>/dev/null | awk '{print $NF}' | grep -E 'libqrtr[^/]*$' | sort -u

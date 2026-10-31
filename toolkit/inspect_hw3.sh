@@ -1,5 +1,5 @@
 #!/bin/bash
-cd "/mnt/c/Users/user/Documents/Default Project/duolinux/out" || exit 1
+cd "/mnt/c/path/to/duolinux/out" || exit 1
 D="duolinux-duol.img?offset=537919488"
 
 echo "===== does the KERNEL binary contain the bottom-panel driver match?"

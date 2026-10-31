@@ -1,7 +1,7 @@
 #!/bin/bash
 set -u
 S=/mnt/rnx/SYSTEM
-OUT="/mnt/c/Users/user/Documents/Default Project/duolinux/out/rnx-port/internal"
+OUT="/mnt/c/path/to/duolinux/out/rnx-port/internal"
 mkdir -p "$OUT"
 
 echo "=== candidate internal-install files"

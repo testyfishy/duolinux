@@ -4,7 +4,7 @@ export DEBIAN_FRONTEND=noninteractive
 command -v unsquashfs >/dev/null || { apt-get update -qq; apt-get install -y -qq squashfs-tools rsync >/dev/null; }
 
 S=/mnt/rnx/SYSTEM
-DEST="/mnt/c/Users/user/Documents/Default Project/duolinux/out/rnx-root"
+DEST="/mnt/c/path/to/duolinux/out/rnx-root"
 mkdir -p "$DEST"
 
 echo "=== interesting paths in their system:"
