@@ -90,5 +90,30 @@ number in the panel.
 
 - `out/remote/restore-stock-panel.py` - restore Kickoff + Icons-only Task Manager, dedupe, order.
 - `out/remote/apply-stock-panel.sh` - the whole restore + verification pass.
+- `out/remote/repair-panel.py` - repair applet sections merged by hand-editing (missing tray).
+- `out/remote/repair-and-verify.sh` - stop, repair, restart, verify tray and CPU.
 - `out/remote/diag-sycoca.sh` - reproduce the rebuild storm and name the cause.
 - `out/remote/fix-tray-and-measure.sh` - re-add the tray, order the panel, measure idle CPU.
+
+## What a broken applet section looks like
+
+Plasma stores each applet as a base section plus configuration groups:
+
+```ini
+[Containments][3][Applets][8]
+immutability=1
+plugin=org.kde.plasma.systemtray
+
+[Containments][3][Applets][8][Configuration]
+PreloadWeight=65
+SystrayContainmentId=9
+
+[Containments][3][Applets][8][Configuration][General]
+hiddenItems=org.kde.plasma.battery
+```
+
+If `plugin=` ends up under `[Configuration][General]` and the base section is gone, the applet is
+not instantiated at all - it simply vanishes from the panel at the next start, with no error in the
+journal. A missing system tray (no volume or network icons) is the usual symptom. `repair-panel.py`
+moves the keys back and keeps the tray whose inner containment actually holds items.
+
