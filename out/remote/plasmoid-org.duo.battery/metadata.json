@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "org.duo.battery",
+        "Name": "Duo Battery",
+        "Description": "Battery percentage and charging state for the handheld",
+        "Icon": "battery",
+        "Version": "1.0",
+        "License": "MIT",
+        "Authors": [{ "Name": "DuolinuX" }]
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
