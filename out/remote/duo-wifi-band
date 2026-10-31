@@ -1,0 +1,55 @@
+#!/bin/bash
+# Choose which Wi-Fi band this device may use.
+#
+# Default is 2.4 GHz: at this location the 2.4 GHz AP measures ~-38 dBm at
+# 72 Mbit/s while 5 GHz measures -74..-84 dBm. wpa_supplicant rates the 5 GHz
+# link higher on estimated throughput, so left to itself the device stays on the
+# weak band and streaming collapses (7.2 Mbit/s PHY -> hundreds of dropped
+# frames). Pinning the band is the only configuration-level fix on this stack.
+#
+#   duo-wifi-band 2g     2.4 GHz only (default, stable over distance)
+#   duo-wifi-band 5g     5 GHz only (when close to the router and you want the speed)
+#   duo-wifi-band auto   let NetworkManager/wpa_supplicant decide again
+#   duo-wifi-band status show what is in force
+#
+# This is a thin wrapper over nmcli, not a daemon.
+set -euo pipefail
+
+usage() { sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+
+conn() {
+    nmcli -t -f NAME,TYPE connection show --active \
+        | awk -F: '$2 ~ /wireless/ {print $1; exit}'
+}
+
+show() {
+    local c
+    c=$(conn) || true
+    if [ -z "${c:-}" ]; then
+        echo "no active Wi-Fi connection"
+        return
+    fi
+    echo "connection: $c"
+    echo "band pin:   $(nmcli -g 802-11-wireless.band connection show "$c" 2>/dev/null || echo '--')"
+    iw dev wlan0 link 2>/dev/null | grep -E "SSID|freq|signal|bitrate" | sed 's/^\t/  /'
+}
+
+case "${1:-status}" in
+    status) show ;;
+    2g|2.4|bg)
+        c=$(conn); [ -n "$c" ] || { echo "no active Wi-Fi connection"; exit 1; }
+        nmcli connection modify "$c" 802-11-wireless.band bg
+        nmcli connection up "$c" >/dev/null
+        echo "pinned to 2.4 GHz"; show ;;
+    5g|5|a)
+        c=$(conn); [ -n "$c" ] || { echo "no active Wi-Fi connection"; exit 1; }
+        nmcli connection modify "$c" 802-11-wireless.band a
+        nmcli connection up "$c" >/dev/null
+        echo "pinned to 5 GHz"; show ;;
+    auto)
+        c=$(conn); [ -n "$c" ] || { echo "no active Wi-Fi connection"; exit 1; }
+        nmcli connection modify "$c" 802-11-wireless.band ""
+        nmcli connection up "$c" >/dev/null
+        echo "band pin removed (wpa_supplicant decides)"; show ;;
+    *) usage ;;
+esac
