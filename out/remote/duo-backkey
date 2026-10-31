@@ -56,10 +56,30 @@ WATCHED = (
 
 CONFIG = "/etc/duo/controller.json"
 SCROLL_DIRECTION = "/etc/duo/scroll-direction"
+SCROLL_SOURCE = "/etc/duo/scroll-source"
 
 _mouse = None
 _meta = None
 _direction_cache: tuple[float, bool] = (0.0, True)
+_source_cache: tuple[float, bool] = (0.0, True)
+
+
+def scroll_enabled() -> bool:
+    """False when InputPlumber owns scrolling (its patched build supports it)."""
+    global _source_cache
+    now = time.time()
+    cached_time, cached_value = _source_cache
+    if now - cached_time < 5.0:
+        return cached_value
+    value = True
+    try:
+        with open(SCROLL_SOURCE) as handle:
+            text = handle.read().strip().lower()
+        value = text not in ("inputplumber", "wheel")
+    except OSError:
+        pass
+    _source_cache = (now, value)
+    return value
 
 
 def natural_scroll() -> bool:
@@ -307,13 +327,10 @@ def main() -> int:
                         last_key = now
                         handle_home()
 
-        # Keep scrolling while the stick is held: evdev only reports *changes*,
-        # so a steady stick produces no events, and an event-recency window
-        # stopped the scroll mid-gesture (the intermittent pauses). The last
-        # known deflection is authoritative until the stick is released or the
-        # device goes quiet for long enough to mean it was unplugged.
-        now = time.time()
-        if active_source and now - last_abs.get(active_source, 0) < 3.0:
+        # Scrolling is handled by InputPlumber when /etc/duo/scroll-source says
+        # so (its patched build supports axis -> wheel natively). The daemon then
+        # only handles the back and Home buttons.
+        if scroll_enabled() and active_source and now - last_abs.get(active_source, 0) < 3.0:
             emit_scroll(active_source)
 
 
