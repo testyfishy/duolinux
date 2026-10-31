@@ -5,7 +5,7 @@ set -uo pipefail
 W=$HOME/rocknix-nf
 NEW=$W/src/linux-7.2/.config
 RUN=$W/run.config
-KEY=/mnt/c/Users/user/Documents/Default\ Project/duolinux/out/duo_ssh_key
+KEY=/mnt/c/path/to/duolinux/out/duo_ssh_key
 if [ ! -s "$RUN" ]; then
     tr -d '\r' < "$KEY" > ~/.ssh/duo_key; chmod 600 ~/.ssh/duo_key
     ssh -i ~/.ssh/duo_key -o BatchMode=yes -o StrictHostKeyChecking=no root@192.168.1.33 'zcat /proc/config.gz' > "$RUN"
