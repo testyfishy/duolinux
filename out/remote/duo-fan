@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""Fan control for the Duo Lite: quiet by default, data-driven, never hunting.
+
+Why these numbers: the kernel's own trip points say this SoC (SM6125) begins
+passive throttling at 95 C and only treats 115 C as critical. Anything below
+that is a comfort question, not a safety question, so the default profile keeps
+the fan off for as long as possible and barely audible when it runs.
+
+The control algorithm follows lm-sensors' fancontrol, the design that Steam
+Deck's and Bazzite's handheld fan daemons are variations of:
+
+  * AVERAGE       - average a window of samples; per-core spikes must not move it
+  * interpolation - pwm varies smoothly between curve points, no cliffs
+  * HYSTERESIS    - a move must beat the current target by a deadband
+  * MINSTART      - short kick to break stiction when the fan starts
+  * MINSTOP       - lowest pwm that keeps the fan turning
+  * rate limit    - the pwm approaches its target gradually
+
+Profiles: quiet (default), balanced, performance. Chosen in Settings.
+"""
+from __future__ import annotations
+
+import glob
+import pathlib
+import time
+from collections import deque
+
+POLL = 2.0
+AVERAGE = 8              # samples averaged -> 16 s window
+HYSTERESIS = 2
+
+PROFILE_FILE = pathlib.Path("/etc/duo/fan-profile")
+
+# (temperature C, pwm) - ROCKNIX's curve as interpolation points
+BASE = [(50, 0), (55, 45), (60, 80), (65, 110), (70, 140),
+        (75, 175), (80, 210), (85, 255)]
+
+# start: averaged temperature at which the fan spins up
+# stop:  averaged temperature below which it is allowed to stop
+# cap:   highest pwm the profile may use (audible limit)
+# minpwm/ minstop / minstart: fancontrol semantics, tuned for this small fan
+PROFILES = {
+    "quiet": dict(offset=+14, cap=110, start=72, stop=62,
+                  minpwm=45, minstop=40, minstart=130,
+                  step_up=5, step_down=4),
+    "balanced": dict(offset=+4, cap=190, start=62, stop=52,
+                     minpwm=55, minstop=40, minstart=200,
+                     step_up=8, step_down=5),
+    "performance": dict(offset=0, cap=255, start=55, stop=48,
+                        minpwm=70, minstop=45, minstart=220,
+                        step_up=12, step_down=8),
+}
+
+
+def log(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def load_profile() -> tuple[list[tuple[int, int]], str, dict]:
+    name = "quiet"
+    try:
+        name = PROFILE_FILE.read_text().strip() or "quiet"
+    except OSError:
+        pass
+    if name not in PROFILES:
+        name = "quiet"
+    cfg = PROFILES[name]
+    curve = [(max(30, temp + cfg["offset"]), min(pwm, cfg["cap"]))
+             for temp, pwm in BASE]
+    return curve, name, cfg
+
+
+def find_fan() -> pathlib.Path | None:
+    for hwmon in glob.glob("/sys/class/hwmon/hwmon*"):
+        try:
+            if pathlib.Path(hwmon, "name").read_text().strip() == "pwmfan":
+                return pathlib.Path(hwmon)
+        except OSError:
+            continue
+    return None
+
+
+def hottest() -> int:
+    best = 0
+    for zone in glob.glob("/sys/class/thermal/thermal_zone*"):
+        try:
+            best = max(best, int(pathlib.Path(zone, "temp").read_text().strip()))
+        except (OSError, ValueError):
+            continue
+    return best
+
+
+def interpolate(temp_c: float, curve: list[tuple[int, int]]) -> int:
+    if temp_c <= curve[0][0]:
+        return curve[0][1]
+    if temp_c >= curve[-1][0]:
+        return curve[-1][1]
+    for (t0, p0), (t1, p1) in zip(curve, curve[1:]):
+        if t0 <= temp_c <= t1:
+            ratio = (temp_c - t0) / (t1 - t0)
+            return int(round(p0 + ratio * (p1 - p0)))
+    return curve[-1][1]
+
+
+def claim_fan() -> None:
+    """Take the pwm channel away from the thermal governor.
+
+    The glob here used to look for ``cdev*_type`` files, but the kernel exposes
+    cooling devices as ``cdevN/type`` directories, so nothing was ever claimed
+    and two controllers fought over pwm1. Zones that drive the fan are switched
+    to user_space; the cpuss-* zones keep their 95 C frequency throttling as the
+    safety net.
+    """
+    claimed = []
+    for zone in glob.glob("/sys/class/thermal/thermal_zone*"):
+        drives_fan = False
+        for cdev in pathlib.Path(zone).glob("cdev*"):
+            try:
+                if (cdev / "type").read_text().strip() == "pwm-fan":
+                    drives_fan = True
+                    break
+            except OSError:
+                continue
+        if not drives_fan:
+            continue
+        try:
+            pathlib.Path(zone, "policy").write_text("user_space")
+            claimed.append(pathlib.Path(zone, "type").read_text().strip())
+        except OSError:
+            pass
+    if claimed:
+        log(f"fan: claimed from governor: {', '.join(claimed)}")
+
+
+def write_pwm(fan: pathlib.Path, value: int) -> bool:
+    try:
+        (fan / "pwm1_enable").write_text("1")
+        (fan / "pwm1").write_text(str(max(0, min(255, value))))
+        return True
+    except OSError:
+        return False
+
+
+def main() -> None:
+    claim_fan()
+    curve, profile, cfg = load_profile()
+    log(f"fan: profile {profile} start {cfg['start']}C stop {cfg['stop']}C "
+        f"cap {cfg['cap']}")
+
+    samples: deque[int] = deque(maxlen=AVERAGE)
+    fan = None
+    applied = 0
+    target = 0
+    running = False
+    above = 0
+    below = 0
+    kick_until = 0.0
+
+    while True:
+        if fan is None or not (fan / "pwm1").exists():
+            fan = find_fan()
+            samples.clear()
+            applied = target = 0
+            running = False
+            if fan is None:
+                time.sleep(5)
+                continue
+            write_pwm(fan, 0)
+
+        samples.append(hottest())
+        avg_c = int(sum(samples) / len(samples) / 1000.0)
+
+        if avg_c >= cfg["start"]:
+            above += 1
+            below = 0
+        elif avg_c <= cfg["stop"]:
+            below += 1
+            above = 0
+        else:
+            above = below = 0
+
+        now = time.monotonic()
+        if not running and above >= 2:
+            running = True
+            kick_until = now + 1.0
+            applied = cfg["minstart"]
+            log("fan: starting")
+        elif running and below >= 10:
+            running = False
+            applied = 0
+            log("fan: stopping")
+
+        if running:
+            wanted = max(cfg["minpwm"], interpolate(avg_c, curve))
+            wanted = min(wanted, cfg["cap"])
+            if wanted > target + HYSTERESIS:
+                target = wanted
+            elif wanted < target - HYSTERESIS:
+                target = wanted
+
+            if now < kick_until:
+                applied = cfg["minstart"]
+            elif target > applied:
+                applied = min(target, applied + cfg["step_up"])
+            elif target < applied:
+                applied = max(target, applied - cfg["step_down"])
+            applied = max(applied, cfg["minstop"])
+        else:
+            applied = 0
+            target = 0
+
+        if not write_pwm(fan, applied):
+            fan = None
+            continue
+
+        log(f"fan: avg {avg_c}C target {target} pwm {applied} "
+            f"{'on' if running else 'off'} [{profile}]")
+        time.sleep(POLL)
+
+
+if __name__ == "__main__":
+    main()
