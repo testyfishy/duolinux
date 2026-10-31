@@ -1,30 +1,23 @@
 #!/usr/bin/env python3
-"""Put stock Kickoff and the Icons-only Task Manager back on the panel.
+"""Restore the default Plasma panel applets, in a Windows-style order.
 
-Run with plasmashell stopped. The substitute applets are converted in place so
-their ids (and therefore AppletOrder) stay valid:
+Run with plasmashell stopped (systemctl --user stop plasma-plasmashell.service),
+because Plasma rewrites this file on exit.
 
-  quicklaunch (fuzzel)  -> org.kde.plasma.kickoff
-  windowlist           -> org.kde.plasma.icontasks
-
-Layout stays Windows-style: launcher, task icons, expanding spacer, tray,
-battery percentage, clock at the far right end.
-
-Only apply this once the panel-loop root cause is fixed; on an unfixed system
-icontasks will burn ~29 % of a core.
+What it does:
+  * converts the fuzzel quicklaunch into org.kde.plasma.kickoff, in place
+  * converts the classic window list into org.kde.plasma.icontasks, in place
+  * deletes any other kickoff/task applet (duplicates from earlier edits)
+  * orders the panel: launcher, task icons, expanding spacer, tray,
+    battery percentage, clock at the far right end
+  * keeps exactly one battery indicator, showing a percentage
 """
 import pathlib
 import re
 import sys
 
 PATH = pathlib.Path("/home/duo/.config/plasma-org.kde.plasma.desktop-appletsrc")
-text = PATH.read_text()
-
 CONTAINMENT = 3
-SWAPS = {
-    "org.kde.plasma.quicklaunch": "org.kde.plasma.kickoff",
-    "org.kde.plasma.windowlist": "org.kde.plasma.icontasks",
-}
 ORDER = [
     "org.kde.plasma.kickoff",
     "org.kde.plasma.icontasks",
@@ -33,47 +26,89 @@ ORDER = [
     "org.kde.plasma.battery",
     "org.kde.plasma.digitalclock",
 ]
+# Applets that are only ever wanted once; extras are deleted.
+UNIQUE = {
+    "org.kde.plasma.kickoff",
+    "org.kde.plasma.icontasks",
+    "org.kde.plasma.windowlist",
+    "org.kde.plasma.quicklaunch",
+    "org.kde.plasma.taskmanager",
+}
 
-# Map applet id -> plugin for the panel containment.
-applets: dict[str, str] = {}
-pattern = re.compile(
-    rf"\[Containments\]\[{CONTAINMENT}\]\[Applets\]\[(\d+)\]\n((?:(?!\[).*\n)*)"
-)
-for match in pattern.finditer(text):
-    plugin = re.search(r"plugin=([\w.]+)", match.group(2))
-    if plugin:
-        applets[match.group(1)] = plugin.group(1)
+text = PATH.read_text()
 
-changed = []
-for aid, plugin in applets.items():
-    if plugin in SWAPS:
-        new = SWAPS[plugin]
-        text = re.sub(
-            rf"(\[Containments\]\[{CONTAINMENT}\]\[Applets\]\[{aid}\]\n"
-            rf"(?:(?!\[).*\n)*?plugin=){re.escape(plugin)}",
-            lambda m: m.group(1) + new,
-            text,
-            count=1,
-        )
-        changed.append(f"{aid}: {plugin} -> {new}")
 
-if not changed:
-    print("nothing to swap; check the applet ids", file=sys.stderr)
+def applets(text: str) -> dict[str, str]:
+    """Map applet id -> plugin inside the panel containment."""
+    found = {}
+    for match in re.finditer(
+        rf"\[Containments\]\[{CONTAINMENT}\]\[Applets\]\[(\d+)\]\n((?:(?!\[).*\n)*)", text
+    ):
+        plugin = re.search(r"plugin=([\w.]+)", match.group(2))
+        if plugin:
+            found[match.group(1)] = plugin.group(1)
+    return found
 
-# Rebuild the id -> plugin map after the swap, then set AppletOrder.
-applets = {}
-for match in pattern.finditer(text):
-    plugin = re.search(r"plugin=([\w.]+)", match.group(2))
-    if plugin:
-        applets[match.group(1)] = plugin.group(1)
+
+def drop_applet(text: str, aid: str) -> str:
+    """Delete an applet and all of its configuration sections."""
+    out, skip = [], False
+    for line in text.splitlines():
+        if line.startswith("["):
+            skip = line.startswith(
+                (f"[Containments][{CONTAINMENT}][Applets][{aid}]",
+                 f"[Containments][{CONTAINMENT}][Applets][{aid}][")
+            )
+        if not skip:
+            out.append(line)
+    return "\n".join(out)
+
+
+def set_plugin(text: str, aid: str, old: str, new: str) -> str:
+    return re.sub(
+        rf"(\[Containments\]\[{CONTAINMENT}\]\[Applets\]\[{aid}\]\n"
+        rf"(?:(?!\[).*\n)*?plugin=){re.escape(old)}",
+        lambda m: m.group(1) + new,
+        text,
+        count=1,
+    )
+
+
+# 1. Swap the substitutes back to stock applets, in place.
+swapped = {}
+for aid, plugin in applets(text).items():
+    if plugin == "org.kde.plasma.quicklaunch":
+        text = set_plugin(text, aid, plugin, "org.kde.plasma.kickoff")
+        swapped["kickoff"] = aid
+        print(f"{aid}: quicklaunch -> kickoff")
+    elif plugin in ("org.kde.plasma.windowlist", "org.kde.plasma.taskmanager"):
+        text = set_plugin(text, aid, plugin, "org.kde.plasma.icontasks")
+        swapped["icontasks"] = aid
+        print(f"{aid}: {plugin} -> icontasks")
+
+if not swapped:
+    print("no substitute applets found; nothing swapped", file=sys.stderr)
+
+# 2. Delete duplicates (e.g. a kickoff added while diagnosing).
+known = applets(text)
+for aid, plugin in sorted(known.items(), key=lambda kv: int(kv[0])):
+    if plugin not in UNIQUE:
+        continue
+    keep = swapped.get({"org.kde.plasma.kickoff": "kickoff",
+                        "org.kde.plasma.icontasks": "icontasks"}.get(plugin, ""))
+    if keep is None or aid == keep:
+        continue
+    text = drop_applet(text, aid)
+    print(f"{aid}: removed duplicate {plugin}")
+
+# 3. Order the panel.
+known = applets(text)
 by_plugin = {}
-for aid, plugin in applets.items():
+for aid, plugin in known.items():
     by_plugin.setdefault(plugin, aid)
-
 missing = [p for p in ORDER if p not in by_plugin]
 if missing:
     print("missing applets:", missing, file=sys.stderr)
-
 order = ";".join(by_plugin[p] for p in ORDER if p in by_plugin)
 if "AppletOrder=" in text:
     text = re.sub(r"AppletOrder=[0-9;]*", f"AppletOrder={order}", text, count=1)
@@ -85,8 +120,7 @@ else:
         count=1,
     )
 
-# Exactly one battery indicator: the panel applet keeps the percentage, the
-# tray's copy stays hidden.
+# 4. One battery indicator, with a percentage.
 tray_id = by_plugin.get("org.kde.plasma.systemtray")
 if tray_id:
     anchor = f"[Containments][{CONTAINMENT}][Applets][{tray_id}][Configuration][General]\n"
@@ -119,6 +153,4 @@ if battery_id:
         text = text.replace(marker + "\n", marker + "\nshowPercentage=true\n", 1)
 
 PATH.write_text(text + "\n")
-for line in changed:
-    print(line)
 print("AppletOrder =", order)
