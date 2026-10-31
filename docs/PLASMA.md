@@ -201,3 +201,33 @@ not instantiated at all - it simply vanishes from the panel at the next start, w
 journal. A missing system tray (no volume or network icons) is the usual symptom. `repair-panel.py`
 moves the keys back and keeps the tray whose inner containment actually holds items.
 
+
+## Version policy (why we stay on trixie's 6.3.6)
+
+KDE support said 6.3 is old and pointed at 6.6 as the current LTS. Both are true,
+but there is no Debian route to 6.6: trixie ships 6.3.6, and testing/sid ship
+Plasma 6.7.4 with Qt 6.11 and KF6 6.30. Debian does not backport Plasma, because a
+backport would have to carry Qt and KF6 with it.
+
+Decision: stay on trixie and move when the next stable release lands (forky
+freezes around early 2027, releases around mid 2027). At that point the upgrade
+is one coherent suite change that also brings a Plasma newer than 6.6 LTS.
+
+Rejected, for the record:
+
+- **Pinning the KDE/Qt stack from forky onto trixie.** Plasma 6.7 needs the newer
+  Qt, which is built against forky's glibc, libstdc++, ICU, Mesa and libdrm. Apt
+  then either pulls half of forky in or refuses, and every later trixie security
+  update can conflict. Verified state: trixie 6.3.6 / Qt 6.8.2 / KF6 6.13.0 vs
+  forky 6.7.4 / Qt 6.11.2 / KF6 6.30.0.
+- **Building Plasma 6.6 from source.** Would need Qt 6.9+ plus roughly 80 KF6 and
+  Plasma repositories maintained by hand.
+
+## Keyboard-colour LED (Kameleon)
+
+Kameleon lists the PMIC charger LED gb:status (/sys/class/leds/rgb:status, a
+pwm LED on 1c40000.spmi:pmic@3:pwm) as a keyboard. It is cosmetic and belongs
+to Kameleon, not to Plasma or the kernel; tracked upstream and left alone rather
+than patched locally. The only LEDs on the system are mmc0, mmc1 and
+gb:status.
+
