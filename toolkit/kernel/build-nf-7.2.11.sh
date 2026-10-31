@@ -17,6 +17,19 @@ exec >>"$LOG" 2>&1
 cd "$P"
 echo "=== tree: $(git rev-parse --short $BR) on $BR"
 
+# Rebuilding from scratch costs ~16 minutes because mrproper throws away every
+# object. Keep the tree unless the config is missing or the caller asks.
+#   build-nf-7.2.11.sh            incremental (one driver change ~2 min)
+#   build-nf-7.2.11.sh --clean    full rebuild
+CLEAN=${1:-}
+need_config=1
+if [ "$CLEAN" != "--clean" ] && [ -f .config ] &&
+   [ "$(make -s ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LOCALVERSION=-nf kernelrelease 2>/dev/null)" = "7.2.11-nf" ]; then
+    need_config=0
+    echo "=== reusing the existing .config (pass --clean for a full rebuild)"
+fi
+
+if [ "$need_config" = 1 ]; then
 make -s ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- mrproper
 cp "$K/projects/ROCKNIX/devices/SM6115/linux/linux.aarch64.conf" .config
 C="scripts/config --file .config"
@@ -30,6 +43,7 @@ $C -e NETFILTER -e NETFILTER_ADVANCED -e IP_ADVANCED_ROUTER -e IP_MULTIPLE_TABLE
    -e LRU_GEN -e PSI -e ENERGY_MODEL -m ZRAM -m CRYPTO_ZSTD
 $C --set-str INITRAMFS_SOURCE "" -d LOCALVERSION_AUTO -d MODULE_SIG_FORCE -e IKCONFIG -e IKCONFIG_PROC
 make -s ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+fi
 
 miss=0
 for s in NETFILTER NF_TABLES NFT_COMPAT NETFILTER_XT_TARGET_MASQUERADE TUN IP_MULTIPLE_TABLES \
@@ -57,4 +71,4 @@ tar -C "$S" -czf "$W/modules-7.2.11-nf.tgz" lib/modules/7.2.11-nf
 echo "=== artefact"
 ls -l "$W/KERNEL-7.2.11-nf" "$W/modules-7.2.11-nf.tgz"
 echo "modules: $(find "$S/lib/modules/7.2.11-nf" -name '*.ko' | wc -l)"
-zcat "$W/KERNEL-7.2.11-nf" | strings | grep -m1 "Linux version"
+zcat "$W/KERNEL-7.2.11-nf" | strings | grep -m1 "Linux version" || true
