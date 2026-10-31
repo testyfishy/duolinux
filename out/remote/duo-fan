@@ -17,32 +17,48 @@ Deck's and Bazzite's handheld fan daemons are variations of:
   * rate limit    - the pwm approaches its target gradually
 
 Profiles: quiet (default), balanced, performance. Chosen in Settings.
+
+Efficiency (2026-10): the loop used to poll every 2 s forever, log every poll
+(~43k journal lines a day), write pwm1/pwm1_enable every tick even when
+unchanged, and re-glob every thermal zone each time. Fixed here:
+
+  * the average is a TIME window, so a slower poll cannot silently stretch it
+    and change the control law;
+  * polling adapts: 2 s while the fan runs or the hottest zone is within 10 C of
+    the start point, 5 s otherwise - never slower, a burst can heat several
+    degrees per second;
+  * sysfs is written only when the value changes, but re-read every 45 s and
+    re-asserted if something reset it (suspend/resume resets pwm1_enable);
+  * the journal only sees a line when something meaningful changed, plus a
+    15 minute heartbeat.
+
+The control law lives in FanController.step(), a pure function of
+(temperature, time, state), so it can be replayed against the old implementation
+by toolkit/kernel/test-fan-replay.py.
 """
 from __future__ import annotations
 
 import glob
+import os
 import pathlib
 import time
 from collections import deque
 
-POLL = 2.0
-AVERAGE = 8              # samples averaged -> 16 s window
+POLL_FAST = 2.0          # fan running, or near the start threshold
+POLL_SLOW = 5.0          # otherwise; never slower than this
+WINDOW = 16.0            # seconds of samples averaged
 HYSTERESIS = 2
+NEAR_START = 10          # degrees below start that forces fast polling
+HEARTBEAT = 900.0        # log at most this often when nothing changes
+REASSERT = 45.0          # re-read the fan registers this often
+ZONE_RESCAN = 60.0       # re-read the zone list at most this often
 
 PROFILE_FILE = pathlib.Path("/etc/duo/fan-profile")
 
-# (temperature C, pwm) - ROCKNIX's curve as interpolation points
 BASE = [(50, 0), (55, 45), (60, 80), (65, 110), (70, 140),
         (75, 175), (80, 210), (85, 255)]
 
-# start: averaged temperature at which the fan spins up
-# stop:  averaged temperature below which it is allowed to stop
-# cap:   highest pwm the profile may use (audible limit)
-# minpwm/ minstop / minstart: fancontrol semantics, tuned for this small fan
 PROFILES = {
-    # A gentle floor: this SoC idles at 55-68 C while charging and only begins
-    # throttling at 95 C, so a near-silent 10% from 55 C costs nothing and keeps
-    # heat moving instead of waiting for 78 C.
     "quiet": dict(curve=[(50, 0), (55, 26), (65, 30), (70, 40),
                          (76, 70), (82, 100), (85, 110)],
                   start=55, stop=48,
@@ -78,39 +94,6 @@ def load_profile() -> tuple[list[tuple[int, int]], str, dict]:
     return curve, name, cfg
 
 
-def find_fan() -> pathlib.Path | None:
-    for hwmon in glob.glob("/sys/class/hwmon/hwmon*"):
-        try:
-            if pathlib.Path(hwmon, "name").read_text().strip() == "pwmfan":
-                return pathlib.Path(hwmon)
-        except OSError:
-            continue
-    return None
-
-
-def hottest() -> int:
-    """Hottest SoC zone only.
-
-    The charger (pmi632) and battery zones are deliberately excluded: they get
-    hot while charging and would spin the fan for the power supply rather than
-    for the SoC, which is exactly the kind of noise this profile exists to avoid.
-    """
-    best = 0
-    for zone in glob.glob("/sys/class/thermal/thermal_zone*"):
-        try:
-            name = pathlib.Path(zone, "type").read_text().strip()
-        except OSError:
-            continue
-        if not (name.startswith("cpuss") or name.startswith("cpu-")
-                or name.startswith("gpu") or name.startswith("pm6125")):
-            continue
-        try:
-            best = max(best, int(pathlib.Path(zone, "temp").read_text().strip()))
-        except (OSError, ValueError):
-            continue
-    return best
-
-
 def interpolate(temp_c: float, curve: list[tuple[int, int]]) -> int:
     if temp_c <= curve[0][0]:
         return curve[0][1]
@@ -123,15 +106,132 @@ def interpolate(temp_c: float, curve: list[tuple[int, int]]) -> int:
     return curve[-1][1]
 
 
-def claim_fan() -> None:
-    """Take the pwm channel away from the thermal governor.
+class FanController:
+    """The control law, free of IO so it can be replayed in tests."""
 
-    The glob here used to look for ``cdev*_type`` files, but the kernel exposes
-    cooling devices as ``cdevN/type`` directories, so nothing was ever claimed
-    and two controllers fought over pwm1. Zones that drive the fan are switched
-    to user_space; the cpuss-* zones keep their 95 C frequency throttling as the
-    safety net.
-    """
+    def __init__(self, curve, cfg):
+        self.curve = curve
+        self.cfg = cfg
+        self.samples: deque[tuple[float, int]] = deque()
+        self.applied = 0
+        self.target = 0
+        self.running = False
+        self.above = 0
+        self.below = 0
+        self.kick_until = 0.0
+        self.started_at = None
+        self.stopped_at = None
+
+    def step(self, temp_mc: int, now: float) -> int:
+        cfg = self.cfg
+        self.samples.append((now, temp_mc))
+        cutoff = now - WINDOW
+        while self.samples and self.samples[0][0] < cutoff:
+            self.samples.popleft()
+        avg_c = int(sum(t for _, t in self.samples) / len(self.samples) / 1000.0)
+
+        if avg_c >= cfg["start"]:
+            self.above += 1
+            self.below = 0
+        elif avg_c <= cfg["stop"]:
+            self.below += 1
+            self.above = 0
+        else:
+            self.above = self.below = 0
+
+        if not self.running and self.above >= 2:
+            self.running = True
+            self.kick_until = now + 1.0
+            self.applied = cfg["minstart"]
+            self.started_at = now
+        elif self.running and self.below >= 10:
+            self.running = False
+            self.applied = 0
+            self.stopped_at = now
+
+        if self.running:
+            wanted = max(cfg["minpwm"], interpolate(avg_c, self.curve))
+            wanted = min(wanted, max(p for _, p in self.curve))
+            if wanted > self.target + HYSTERESIS:
+                self.target = wanted
+            elif wanted < self.target - HYSTERESIS:
+                self.target = wanted
+
+            if now < self.kick_until:
+                self.applied = cfg["minstart"]
+            elif self.target > self.applied:
+                self.applied = min(self.target, self.applied + cfg["step_up"])
+            elif self.target < self.applied:
+                self.applied = max(self.target, self.applied - cfg["step_down"])
+            self.applied = max(self.applied, cfg["minstop"])
+        else:
+            self.applied = 0
+            self.target = 0
+
+        self.avg_c = avg_c
+        return self.applied
+
+
+class Zones:
+    """Thermal zones with open fds; re-read with pread instead of open/close."""
+
+    def __init__(self):
+        self.fds: list[int] = []
+        self.last_scan = 0.0
+
+    def scan_if_needed(self, now: float, force: bool = False) -> None:
+        if not force and now - self.last_scan < ZONE_RESCAN and self.fds:
+            return
+        self.last_scan = now
+        for fd in self.fds:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        self.fds = []
+        for zone in glob.glob("/sys/class/thermal/thermal_zone*"):
+            p = pathlib.Path(zone)
+            try:
+                name = (p / "type").read_text().strip()
+            except OSError:
+                continue
+            if not (name.startswith("cpuss") or name.startswith("cpu-")
+                    or name.startswith("gpu") or name.startswith("pm6125")):
+                continue
+            try:
+                self.fds.append(os.open(p / "temp", os.O_RDONLY))
+            except OSError:
+                continue
+
+    def hottest(self) -> int:
+        best = 0
+        for fd in self.fds:
+            try:
+                best = max(best, int(os.pread(fd, 16, 0).strip() or 0))
+            except (OSError, ValueError):
+                continue
+        return best
+
+    def close(self) -> None:
+        for fd in self.fds:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        self.fds = []
+
+
+def find_fan() -> pathlib.Path | None:
+    for hwmon in glob.glob("/sys/class/hwmon/hwmon*"):
+        try:
+            if pathlib.Path(hwmon, "name").read_text().strip() == "pwmfan":
+                return pathlib.Path(hwmon)
+        except OSError:
+            continue
+    return None
+
+
+def claim_fan() -> None:
     claimed = []
     for zone in glob.glob("/sys/class/thermal/thermal_zone*"):
         drives_fan = False
@@ -153,13 +253,37 @@ def claim_fan() -> None:
         log(f"fan: claimed from governor: {', '.join(claimed)}")
 
 
-def write_pwm(fan: pathlib.Path, value: int) -> bool:
-    try:
-        (fan / "pwm1_enable").write_text("1")
-        (fan / "pwm1").write_text(str(max(0, min(255, value))))
-        return True
-    except OSError:
-        return False
+class Pwm:
+    def __init__(self, fan: pathlib.Path):
+        self.fan = fan
+        self.value = None
+        self.enabled = False
+        self.last_check = 0.0
+
+    def write(self, value: int, now: float) -> bool:
+        value = max(0, min(255, value))
+        try:
+            # Re-assert: resume from suspend can reset pwm1_enable behind us.
+            if not self.enabled or now - self.last_check >= REASSERT:
+                self.last_check = now
+                try:
+                    if int((self.fan / "pwm1_enable").read_text().strip()) != 1:
+                        (self.fan / "pwm1_enable").write_text("1")
+                    if self.value is not None and \
+                       int((self.fan / "pwm1").read_text().strip()) != self.value:
+                        (self.fan / "pwm1").write_text(str(self.value))
+                except (OSError, ValueError):
+                    self.enabled = False
+            if not self.enabled:
+                (self.fan / "pwm1_enable").write_text("1")
+                self.enabled = True
+            if value != self.value:
+                (self.fan / "pwm1").write_text(str(value))
+                self.value = value
+            return True
+        except OSError:
+            self.enabled = False
+            return False
 
 
 def main() -> None:
@@ -168,75 +292,51 @@ def main() -> None:
     log(f"fan: profile {profile} start {cfg['start']}C stop {cfg['stop']}C "
         f"max {max(p for _, p in curve)}")
 
-    samples: deque[int] = deque(maxlen=AVERAGE)
-    fan = None
-    applied = 0
-    target = 0
-    running = False
-    above = 0
-    below = 0
-    kick_until = 0.0
+    ctrl = FanController(curve, cfg)
+    zones = Zones()
+    zones.scan_if_needed(time.monotonic(), force=True)
+    pwm: Pwm | None = None
+    last_log = 0.0
+    last_log_state = None
+    last_log_pwm = -1
 
     while True:
-        if fan is None or not (fan / "pwm1").exists():
+        now = time.monotonic()
+
+        if pwm is None or not (pwm.fan / "pwm1").exists():
             fan = find_fan()
-            samples.clear()
-            applied = target = 0
-            running = False
+            ctrl = FanController(curve, cfg)
             if fan is None:
+                pwm = None
                 time.sleep(5)
                 continue
-            write_pwm(fan, 0)
+            pwm = Pwm(fan)
+            pwm.write(0, now)
 
-        samples.append(hottest())
-        avg_c = int(sum(samples) / len(samples) / 1000.0)
+        zones.scan_if_needed(now)
+        temp = zones.hottest()
+        applied = ctrl.step(temp, now)
+        temp_c = temp // 1000
 
-        if avg_c >= cfg["start"]:
-            above += 1
-            below = 0
-        elif avg_c <= cfg["stop"]:
-            below += 1
-            above = 0
-        else:
-            above = below = 0
-
-        now = time.monotonic()
-        if not running and above >= 2:
-            running = True
-            kick_until = now + 1.0
-            applied = cfg["minstart"]
-            log("fan: starting")
-        elif running and below >= 10:
-            running = False
-            applied = 0
-            log("fan: stopping")
-
-        if running:
-            wanted = max(cfg["minpwm"], interpolate(avg_c, curve))
-            wanted = min(wanted, max(p for _, p in curve))
-            if wanted > target + HYSTERESIS:
-                target = wanted
-            elif wanted < target - HYSTERESIS:
-                target = wanted
-
-            if now < kick_until:
-                applied = cfg["minstart"]
-            elif target > applied:
-                applied = min(target, applied + cfg["step_up"])
-            elif target < applied:
-                applied = max(target, applied - cfg["step_down"])
-            applied = max(applied, cfg["minstop"])
-        else:
-            applied = 0
-            target = 0
-
-        if not write_pwm(fan, applied):
-            fan = None
+        if not pwm.write(applied, now):
+            pwm = None
             continue
 
-        log(f"fan: avg {avg_c}C target {target} pwm {applied} "
-            f"{'on' if running else 'off'} [{profile}]")
-        time.sleep(POLL)
+        changed = (ctrl.running != last_log_state) or abs(applied - last_log_pwm) >= 4
+        if changed or now - last_log >= HEARTBEAT:
+            log(f"fan: avg {ctrl.avg_c}C now {temp_c}C target {ctrl.target} "
+                f"pwm {applied} {'on' if ctrl.running else 'off'} [{profile}]")
+            last_log = now
+            last_log_state = ctrl.running
+            last_log_pwm = applied
+
+        # Fast while running or close to the start point; a burst can heat this
+        # SoC by several degrees a second, so never slower than POLL_SLOW.
+        if ctrl.running or temp_c >= cfg["start"] - NEAR_START:
+            delay = POLL_FAST
+        else:
+            delay = POLL_SLOW
+        time.sleep(delay)
 
 
 if __name__ == "__main__":
