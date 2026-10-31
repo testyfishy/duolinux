@@ -155,15 +155,14 @@ def home_action() -> str:
 
 
 def press_super() -> None:
-    """Plasma binds the application launcher to the Meta key alone."""
-    global _meta
-    try:
-        import uinput
-    except ImportError:
-        return
-    if _meta is None:
-        _meta = uinput.Device([uinput.KEY_LEFTMETA], name="duo-home-key")
-    _meta.emit_click(uinput.KEY_LEFTMETA)
+    """Open the application launcher.
+
+    Kickoff (and every KService-menu launcher on this system) loops at ~13% of a
+    core per instance, so the launcher is fuzzel: a layer-shell app that reads
+    .desktop files itself and exits. Plasma's own shortcut is not used.
+    """
+    subprocess.Popen(["fuzzel", "--output", "DSI-1"], env=session_env(),
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def handle_home() -> None:
