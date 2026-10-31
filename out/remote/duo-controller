@@ -43,6 +43,79 @@ ACTIONS: dict[str, tuple[str, str | None]] = {
     "scroll_down": ("Scroll down (mouse wheel)", None),
 }
 
+# Physical button codes as the kernel reports them, mapped to the rows above.
+# Used by the "Learn" flow so assigning a button does not require knowing its
+# InputPlumber name.
+CAPTURE_CODES = {
+    304: "b",       # BTN_SOUTH
+    305: "a",       # BTN_EAST
+    307: "x",       # BTN_NORTH
+    308: "y",       # BTN_WEST
+    310: "l1",
+    311: "r1",
+    312: "l2",
+    313: "r2",
+    314: "select",
+    315: "start",
+    317: "l3",
+    318: "r3",
+}
+
+PAD_NAME = "Retroid Pocket Duo Lite Gamepad"
+
+
+def pad_device() -> str | None:
+    name = None
+    for line in open("/proc/bus/input/devices"):
+        line = line.strip()
+        if line.startswith("N: Name="):
+            name = line.split("=", 1)[1].strip().strip('"')
+        elif line.startswith("H: Handlers=") and name == PAD_NAME:
+            for handler in line.split("=", 1)[1].split():
+                if handler.startswith("event"):
+                    return f"/dev/input/{handler}"
+    return None
+
+
+def capture_button(timeout: float = 5.0) -> str | None:
+    """Wait for one physical button press and return its binding id."""
+    import select
+    import struct
+    import time
+
+    path = pad_device()
+    if path is None:
+        return None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return None
+
+    deadline = time.time() + timeout
+    hit = None
+    try:
+        while time.time() < deadline and hit is None:
+            try:
+                readable, _, _ = select.select([fd], [], [], 0.2)
+            except InterruptedError:
+                continue
+            if not readable:
+                continue
+            try:
+                data = os.read(fd, 24 * 32)
+            except OSError:
+                break
+            for offset in range(0, len(data) - 23, 24):
+                _s, _u, kind, code, value = struct.unpack(
+                    "@llHHi", data[offset:offset + 24])
+                if kind == 1 and value == 1 and code in CAPTURE_CODES:
+                    hit = CAPTURE_CODES[code]
+                    break
+    finally:
+        os.close(fd)
+    return hit
+
+
 # The Home button arrives as a plain KEY_HOME, not a gamepad button, so it is
 # handled by the key daemon rather than by an InputPlumber profile.
 HOME_ACTIONS = {
@@ -159,6 +232,10 @@ class Window(Gtk.Window):
         change.connect("clicked", self.on_change, view)
         buttons.pack_start(change, False, False, 0)
 
+        learn = Gtk.Button(label="Learn: press a button…")
+        learn.connect("clicked", self.on_learn, view)
+        buttons.pack_start(learn, False, False, 0)
+
         reset = Gtk.Button(label="Restore defaults")
         reset.connect("clicked", self.on_reset)
         buttons.pack_end(reset, False, False, 0)
@@ -188,6 +265,23 @@ class Window(Gtk.Window):
         if treeiter is None:
             return None
         return model[treeiter][0]
+
+    def on_learn(self, _widget, view: Gtk.TreeView) -> None:
+        """Wait for a physical press, select that row, then ask for the action."""
+        self.status.set_text("Press the button you want to change…")
+        while Gtk.events_pending():
+            Gtk.main_iteration_do(False)
+        binding = capture_button()
+        if binding is None:
+            self.status.set_text("No button pressed (timed out).")
+            return
+        for index, row in enumerate(self.store):
+            if row[0] == binding:
+                view.get_selection().select_path(Gtk.TreePath.new_from_indices([index]))
+                view.scroll_to_cell(Gtk.TreePath.new_from_indices([index]), None, False, 0, 0)
+                break
+        self.status.set_text(f"Detected: {BUTTONS[binding][0]}")
+        self.on_change(None, view)
 
     def on_change(self, _widget, view: Gtk.TreeView) -> None:
         button = self.selected_button(view)
