@@ -38,6 +38,7 @@ KEY_F1 = 59
 KEY_HOME = 102
 KEY_F13 = 183
 KEY_F14 = 184
+KEY_F15 = 188
 BTN_SELECT = 314
 BTN_DPAD_LEFT = 544
 BTN_DPAD_RIGHT = 545
@@ -167,6 +168,14 @@ def move_window(direction: str) -> None:
         ["/usr/bin/qdbus6", "org.kde.kglobalaccel", "/component/kwin",
          "org.kde.kglobalaccel.Component.invokeShortcut",
          WINDOW_SHORTCUT.get(direction, WINDOW_SHORTCUT["next"])],
+        env=session_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def close_window() -> None:
+    """Ask KWin to close the focused window (its 'Window Close' shortcut)."""
+    subprocess.Popen(
+        ["/usr/bin/qdbus6", "org.kde.kglobalaccel", "/component/kwin",
+         "org.kde.kglobalaccel.Component.invokeShortcut", "Window Close"],
         env=session_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -365,6 +374,10 @@ def main() -> int:
                         continue
                     last_abs[path] = time.time()
                     active_source = path
+                elif kind == EV_KEY and code == KEY_F15:
+                    if value:
+                        close_window()
+                    continue
                 elif kind == EV_KEY and code in (KEY_F13, KEY_F14):
                     # Select / Start are mapped to F13 / F14 in the InputPlumber
                     # profile, so these arrive on the InputPlumber keyboard node.

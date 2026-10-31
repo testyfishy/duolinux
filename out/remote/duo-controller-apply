@@ -68,6 +68,7 @@ ACTIONS: dict[str, dict | None] = {
     # passing through so games still receive them.
     "window_next": {"keyboard": "KeyF13"},
     "window_prev": {"keyboard": "KeyF14"},
+    "window_close": {"keyboard": "KeyF15"},
 }
 
 MANAGED_BUTTONS = {name["button"] for name, _ in BUTTONS.values() if "button" in name}

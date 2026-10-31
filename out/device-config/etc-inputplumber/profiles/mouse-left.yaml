@@ -66,7 +66,7 @@ mapping:
     gamepad:
       button: Select
   target_events:
-  - keyboard: KeyF13
+  - keyboard: KeyF15
 - name: Duo start
   source_event:
     gamepad:
