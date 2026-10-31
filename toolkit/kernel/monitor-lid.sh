@@ -1,7 +1,7 @@
 #!/bin/bash
 # Probe the device once a second from the host and log reachability.
 # A real suspend makes every probe fail for the whole sleep window.
-H=192.168.1.33
+H=${DUO_HOST:-192.168.1.10}
 LOG=$HOME/lidmon.txt
 : > "$LOG"
 for i in $(seq 1 300); do

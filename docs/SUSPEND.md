@@ -51,7 +51,7 @@ from outside:
 
 ```
 # on the host
-ping -i1 192.168.1.33
+ping -i1 <device-ip>
 # on the device
 rtcwake -m mem -s 15
 ```

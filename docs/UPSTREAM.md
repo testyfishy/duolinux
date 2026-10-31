@@ -47,6 +47,18 @@ that breaks out-of-tree DTS files on every rebase.
   other 38 carry none: authorship is unknown, and they must not be submitted
   upstream without establishing who wrote them.
 
+## How to reach ROCKNIX
+
+There is no GitHub issue tracker: `ROCKNIX/distribution` has issues **disabled**
+(`has_issues: false`), no discussions and no wiki. Their bug-report template says
+plainly: *"Any issue created without first being discussed on our discord server
+will be closed automatically"*, and points at their Discord. The only self-serve
+GitHub channel is a pull request, which is not the right shape for a rebase
+report.
+
+So the report below has to go to their Discord (or a PR if it is turned into an
+actual code change). It has not been sent.
+
 ## Draft message to ROCKNIX (not sent)
 
 > Subject: SM6115 series on 7.2.11 - one conflict fix and a test report

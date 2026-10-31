@@ -2,7 +2,7 @@
 # Reboot the device and wait for SSH to return, then report the kernel.
 set -uo pipefail
 KEY="$HOME/.ssh/duo_key"
-SSH="ssh -i $KEY -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 root@192.168.1.33"
+SSH="ssh -i $KEY -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 root@${DUO_HOST:-192.168.1.10}"
 
 echo "=== rebooting"
 $SSH 'sync; systemctl reboot' 2>/dev/null || true
