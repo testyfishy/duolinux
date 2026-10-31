@@ -21,7 +21,7 @@ repo is about making a normal desktop usable with those.
 | Bottom screen | `DP-1`, 1280x960@60, behind an Analogix DSI-to-DP bridge, scale 1.16667 → 1098x823 logical, placed below DSI-1 |
 | Input | built-in gamepad (via InputPlumber), two touch panels, no keyboard |
 | Boot | openABL from the ROCKNIX project, kernel + DTB from the ROCKNIX SM6115 tree |
-| Storage | Debian rootfs on microSD; Android untouched |
+| Storage | Debian rootfs on the eMMC (69 GiB ext4, `LINUXROOT`); Android kept with a 32 GiB userdata |
 
 ## What is in this repository
 
