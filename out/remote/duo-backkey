@@ -148,6 +148,11 @@ def press_super() -> None:
 
 def handle_home() -> None:
     action = home_action()
+    # Wake the display first: after the screen blanks, the Home button is the
+    # natural "wake and go home" gesture on a handheld.
+    subprocess.run(["kscreen-doctor", "--dpms", "on"], env=session_env(),
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                   check=False)
     if action == "launcher":
         press_super()
     elif action == "keyboard":
