@@ -70,6 +70,12 @@ Anything `ssh` accepts works, including aliases from `~/.ssh/config`.
 
 ## Tailscale
 
+**Blocked on this kernel.** Tailscale's normal mode needs netfilter tables and policy routing, and
+the ROCKNIX 7.2.0 kernel ships neither (`CONFIG_NF_TABLES` off, `ip_tables.ko` missing,
+`CONFIG_IP_MULTIPLE_TABLES` unset). `tailscaled` exits in a restart loop. See
+[TAILSCALE.md](TAILSCALE.md) for the evidence, the userspace-networking workaround and the kernel
+options. The commands below work on a kernel that has those features.
+
 ```sh
 tailscale status
 tailscale netcheck

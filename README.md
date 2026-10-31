@@ -37,6 +37,7 @@ repo is about making a normal desktop usable with those.
 | `out/inputplumber-fork/` | Patch adding axis-to-wheel support to InputPlumber, plus publishing notes |
 | `docs/` | Bring-up notes: boot chain, hardware map, build pipeline, status ledger |
 | `docs/PLASMA.md` | Plasma session: why plasmashell must run as a user unit, panel layout, battery |
+| `docs/TAILSCALE.md` | Why Tailscale cannot run on this kernel, and what the alternatives are |
 | `tests/` | Unit tests for the image/boot.img builders |
 
 Built images, the kernel, firmware, InputPlumber binaries, logs and SSH keys are **not** in the
