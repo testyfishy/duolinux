@@ -31,6 +31,7 @@ repo is about making a normal desktop usable with those.
 | `configs/`, `overlay/` | Rootfs package list, setup script and the original (Sway-era) overlay |
 | `out/abl/`, `out/*.sh`, `out/patch/` | Android-side "run script as root" helpers (ABL backup/flash, SD writer, verification) and the in-place boot partition patcher |
 | `out/remote/` | Scripts deployed to the running device: settings pages, daemons, install/fix scripts |
+| `out/device-config/` | Snapshot of the live device configuration: `/etc/duo`, InputPlumber profiles, systemd units, udev and polkit rules, KWin/KDE settings, `duo-session`. This is what makes the setup reproducible rather than just the scripts |
 | `out/overlay/` | USB-gadget networking, ssh self-heal and diagnostics units |
 | `out/wvkbd-0.15/` | Forked on-screen keyboard (GPLv3), see below |
 | `out/vboard-fork/` | Vboard fork, tried and rejected; kept for reference only (GPLv3) |
