@@ -1,0 +1,6 @@
+#!/bin/sh
+# Force the Duo Lite's bottom panel (DP-1) to be detected.
+# The bridge never emits a hotplug event, so ROCKNIX writes "detect" here too.
+echo detect > /sys/class/drm/card0-DP-1/status 2>/dev/null || true
+sleep 1
+cat /sys/class/drm/card0-DP-1/status 2>/dev/null

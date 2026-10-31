@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Configure both Duo Lite panels in Sway.
+
+Main screen: DSI-1 (1080x1920 portrait panel), user scale from
+~/.config/duo/scale.conf.
+Bottom screen: DP-1 (1280x960), placed directly below the main screen, with the
+ft5x06 touchscreen mapped to it.  The bridge does not emit hotplug events, so we
+ask the kernel to re-detect first (ROCKNIX does the same).
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import time
+
+SCALE_FILE = os.path.expanduser("~/.config/duo/scale.conf")
+MAIN = "DSI-1"
+BOTTOM = "DP-1"
+BOTTOM_MODE = "1280x960"
+
+
+def sway(*args: str) -> None:
+    subprocess.run(["swaymsg", *args], capture_output=True)
+
+
+def outputs() -> dict[str, dict]:
+    out = subprocess.run(["swaymsg", "-t", "get_outputs", "-r"],
+                         capture_output=True, text=True).stdout
+    try:
+        return {o["name"]: o for o in json.loads(out)}
+    except Exception:
+        return {}
+
+
+def main() -> None:
+    scale = 1.5
+    if os.path.exists(SCALE_FILE):
+        try:
+            scale = float(open(SCALE_FILE).read().strip())
+        except ValueError:
+            pass
+    if scale not in (1.0, 1.25, 1.5, 1.75, 2.0):
+        scale = 1.5
+
+    sway("output", MAIN, "scale", str(scale))
+    sway("output", MAIN, "position", "0", "0")
+
+    # Ask the kernel to re-detect the bottom panel (root helper via sudo).
+    for _ in range(3):
+        if outputs().get(BOTTOM, {}).get("current_mode") is not None:
+            break
+        subprocess.run(["sudo", "-n", "/usr/local/bin/duo-bottom-detect"],
+                       capture_output=True)
+        time.sleep(1.5)
+
+    outs = outputs()
+    main_out = outs.get(MAIN, {})
+    rect = main_out.get("rect") or {}
+    width = int(rect.get("width", int(1920 / scale)))
+    height = int(rect.get("height", int(1080 / scale)))
+
+    if BOTTOM in outs:
+        sway("output", BOTTOM, "mode", BOTTOM_MODE)
+        sway("output", BOTTOM, "scale", "1")
+        sway("output", BOTTOM, "position", str(int((width - 1280) / 2)), str(height))
+
+    # Touchscreens: Himax is the main panel, ft5x06 is the bottom panel.
+    inputs = subprocess.run(["swaymsg", "-t", "get_inputs", "-r"],
+                            capture_output=True, text=True).stdout
+    try:
+        for item in json.loads(inputs):
+            ident = item.get("identifier", "")
+            if "Himax" in ident:
+                sway("input", ident, "map_to_output", MAIN)
+            elif "ft5x06" in ident:
+                sway("input", ident, "map_to_output", BOTTOM)
+
+
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    main()

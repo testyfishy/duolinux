@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""i3bar status for the Duo Lite.
+
+i3status can only read batteries named BAT0/BAT1; this device exposes a single
+`battery`, so we generate the bar ourselves.
+"""
+from __future__ import annotations
+
+import json
+import pathlib
+import subprocess
+import sys
+import time
+
+BAT = pathlib.Path("/sys/class/power_supply/battery")
+
+
+def battery_block() -> dict:
+    try:
+        cap = int((BAT / "capacity").read_text().strip())
+        status = (BAT / "status").read_text().strip()
+    except (OSError, ValueError):
+        return {"name": "battery", "full_text": "bat ?"}
+
+    icon = "\u25b2" if status == "Charging" else "\u25bc"
+    short = {"Charging": "chg", "Discharging": "", "Full": "full",
+             "Not charging": "ac"}.get(status, status.lower()[:4])
+    text = f"{icon} {cap}%"
+    if short:
+        text += f" {short}"
+    colour = "#7ee787" if cap > 30 else "#ffa657" if cap > 15 else "#ff7b72"
+    return {"name": "battery", "full_text": text, "color": colour}
+
+
+def wifi_block() -> dict:
+    try:
+        out = subprocess.run(["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
+                             capture_output=True, text=True, timeout=4).stdout
+        for line in out.splitlines():
+            active, _, ssid = line.partition(":")
+            if active == "yes" and ssid:
+                return {"name": "wifi", "full_text": f"wifi {ssid}"}
+    except Exception:  # noqa: BLE001
+        pass
+    return {"name": "wifi", "full_text": "wifi off", "color": "#8b949e"}
+
+
+def usb_block() -> dict | None:
+    try:
+        state = pathlib.Path("/sys/class/net/usb0/operstate").read_text().strip()
+    except OSError:
+        return None
+    if state == "up":
+        return {"name": "usb", "full_text": "usb"}
+    return None
+
+
+def clock_block() -> dict:
+    return {"name": "clock", "full_text": time.strftime("%a %H:%M")}
+
+
+def main() -> None:
+    sys.stdout.write('{"version": 1}\n[\n')
+    sys.stdout.flush()
+    first = True
+    while True:
+        blocks = [battery_block(), wifi_block()]
+        usb = usb_block()
+        if usb:
+            blocks.append(usb)
+        blocks.append(clock_block())
+        line = json.dumps(blocks)
+        sys.stdout.write(("" if first else ",") + line + "\n")
+        sys.stdout.flush()
+        first = False
+        time.sleep(3)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,63 @@
+#!/bin/sh
+# Pad-friendly Wi-Fi picker: shows the cached scan instantly, refreshes in the
+# background afterwards. No auto-refresh, so the selection never jumps.
+
+list_networks() {
+    nmcli -t -f SSID,SIGNAL,SECURITY dev wifi list 2>/dev/null |
+        awk -F: 'NF>=3 && $1!="" && !seen[$1]++ {
+            sec = ($3 == "" ? "open" : $3)
+            printf "%s | %s%% | %s\n", $1, $2, sec
+        }'
+}
+
+LIST=$(list_networks)
+
+# Only pay for a scan when we have nothing to show.
+if [ -z "$LIST" ]; then
+    nmcli dev wifi rescan >/dev/null 2>&1
+    sleep 2
+    LIST=$(list_networks)
+fi
+
+if [ -z "$LIST" ]; then
+    printf 'No networks found\n' | fuzzel --dmenu --lines 3 --prompt "Wi-Fi: " >/dev/null
+    exit 0
+fi
+
+CHOICE=$(printf '%s\nOther network (hidden)...\n' "$LIST" |
+         fuzzel --dmenu --lines 14 --prompt "Wi-Fi: ")
+[ -z "$CHOICE" ] && exit 0
+
+case "$CHOICE" in
+    "Other network"*)
+        SSID=$(printf '' | fuzzel --dmenu --prompt "Network name: ")
+        [ -z "$SSID" ] && exit 0
+        SEC=""
+        ;;
+    *)
+        SSID=$(printf '%s' "$CHOICE" | sed 's/ | .*//')
+        SEC=$(printf '%s' "$CHOICE" | awk -F'| ' '{print $NF}')
+        ;;
+esac
+
+PASS=""
+if [ "$SEC" != "open" ]; then
+    PASS=$(printf '' | fuzzel --dmenu --password --prompt "Password: ")
+    [ -z "$PASS" ] && exit 0
+fi
+
+if [ -n "$PASS" ]; then
+    RESULT=$(sudo -n nmcli device wifi connect "$SSID" password "$PASS" 2>&1)
+else
+    RESULT=$(sudo -n nmcli device wifi connect "$SSID" 2>&1)
+fi
+RC=$?
+
+if [ $RC -eq 0 ]; then
+    MSG="Connected to $SSID"
+else
+    MSG="Failed: $RESULT"
+fi
+
+printf '%s\nOK\n' "$MSG" | fuzzel --dmenu --lines 4 --prompt "Wi-Fi: " >/dev/null
+exit $RC

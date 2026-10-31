@@ -1,0 +1,4 @@
+#!/bin/sh
+# App launcher; a second press closes an open launcher instead of stacking.
+if pkill -x fuzzel >/dev/null 2>&1; then exit 0; fi
+exec fuzzel --prompt "Apps: "

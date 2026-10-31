@@ -1,0 +1,41 @@
+#!/bin/sh
+# Make sshd work no matter what state the image was assembled in, and leave a
+# log where the PC can read it.  If sshd still refuses, start a rescue shell
+# bound ONLY to the USB link (10.55.0.1:2222).
+LOG=/mnt/duoboot/duo-ssh.log
+mkdir -p /mnt/duoboot
+mount -t vfat -o rw LABEL=ROCKNIX /mnt/duoboot 2>/dev/null
+
+{
+  echo "=== duo-sshfix $(date)"
+  id
+  mkdir -p /run/sshd
+  chmod 755 /run/sshd
+
+  echo "--- host keys"
+  /usr/bin/ssh-keygen -A 2>&1
+  ls -l /etc/ssh/ssh_host_* 2>&1
+
+  echo "--- config test"
+  /usr/sbin/sshd -t 2>&1
+  echo "sshd -t rc=$?"
+
+  echo "--- restart"
+  systemctl restart ssh 2>&1
+  echo "restart rc=$?"
+  sleep 2
+
+  echo "--- listeners"
+  (ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null) | head -20
+
+  if ! (ss -ltn 2>/dev/null | grep -q ':22 '); then
+    echo "--- no listener on 22; starting rescue shell on 10.55.0.1:2222"
+    /usr/bin/python3 /usr/local/bin/duo-rescue-shell >/dev/null 2>&1 &
+  fi
+
+  echo "--- journal"
+  journalctl -u ssh -n 40 --no-pager 2>&1 | tail -40
+} >> "$LOG" 2>&1
+
+sync
+umount /mnt/duoboot 2>/dev/null || true
