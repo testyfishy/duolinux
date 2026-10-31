@@ -24,6 +24,32 @@ lying about the monitor, so `duo-lid` performs the suspend directly through logi
 **Consequence:** if `duo-lid` stops, the lid does nothing at all. Check
 `systemctl status duo-lid` first when lid behaviour looks wrong.
 
+## Attempt to use PowerDevil instead of duo-lid (failed on 6.3.6)
+
+PowerDevil has an upstream switch for exactly this problem:
+`inhibitLidActionWhenExternalMonitorPresent`. The plan was to set it to false,
+set `LidAction` to Sleep, and delete our daemon.
+
+It does not work on Plasma 6.3.6. With `duo-lid` disabled and the config proven
+to be what KDE reads:
+
+```
+kreadconfig6 --file powerdevilrc --group AC --group LidAction --key action
+  -> 1                                    (sleep)
+kreadconfig6 --file powerdevilrc --group AC --key inhibitLidActionWhenExternalMonitorPresent
+  -> false
+journal: org.kde.powerdevil: Lid action was suppressed because an external monitor is present
+```
+
+Closing the lid did nothing. Both profile files were checked
+(`powerdevilrc` and `powermanagementprofilesrc`, the latter only carries the
+Plasma 6 migration marker), the keys are in the active `AC` profile, and
+PowerDevil was restarted before the test.
+
+So on this version the external-monitor suppression is applied regardless of the
+setting. `duo-lid` was re-enabled and remains the working path until this is
+fixed upstream; the PowerDevil keys are harmless and can stay.
+
 ## What a correct lid cycle looks like
 
 ```
