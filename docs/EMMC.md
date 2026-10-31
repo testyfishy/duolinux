@@ -63,41 +63,83 @@ the only Android change.
 
 ## Plan for this device
 
-Preconditions: accept the Android factory reset; have the SD card available as the fallback boot
-medium; do not interrupt the partition step.
+Preconditions: accept the Android factory reset; keep the SD card as the fallback boot medium; do not
+interrupt the partition step. **Use `sgdisk` only** — mixing `parted` and `sgdisk` writes the GPT
+twice and can lose the type/UUID of the userdata entry.
+
+Recorded values (verify before running, do not trust these blindly):
+
+| Item | Value |
+|---|---|
+| `userdata` start | sector 28990464 (14155.5 MiB) |
+| `userdata` 32 GiB end | sector 96099327 (28990464 + 67108864 - 1) |
 
 ```sh
-# 0. Back up the partition table and confirm the plan
+# 0. Identity, backups, and an off-device copy
+sgdisk -i 87 /dev/mmcblk1          # note: type GUID and unique GUID
 sgdisk --backup=/root/emmc-gpt.bin /dev/mmcblk1
-sgdisk -p /dev/mmcblk1            # note userdata's start sector
+dd if=/dev/mmcblk1p75 of=/root/emmc-backup/metadata.img bs=4M status=none
+dd if=/dev/mmcblk1p6  of=/root/emmc-backup/misc.img     bs=4M status=none
+dd if=/dev/mmcblk1p36 of=/root/emmc-backup/boot_a.img   bs=4M status=none
+dd if=/dev/mmcblk1p87 of=/root/emmc-backup/userdata-head.img bs=1M count=16 status=none
+# scp all of these to the PC (out/backups/)
 
-# 1. Resize GPT so new entries fit
+# 1. Resize the table only if it has no free entries for 88 and 89
+sgdisk -p /dev/mmcblk1 | grep "holds up to"    # 88 now: 87 used, one spare, so:
 sgdisk --resize-table=128 /dev/mmcblk1
 
-# 2. Shrink userdata to 32 GiB, same start sector
-parted -s /dev/mmcblk1 unit MiB print          # userdata start, in MiB
-parted -s /dev/mmcblk1 rm 87
-parted -a optimal -s /dev/mmcblk1 mkpart primary ext4 <START>MiB 32768MiB
-parted -s /dev/mmcblk1 name 87 userdata
-dd if=/dev/zero of=/dev/mmcblk1p87 bs=1M count=8
+# 2. Shrink userdata to 32 GiB in one sgdisk call, preserving number, type and unique GUID
+sgdisk -d 87 \
+       -n 87:28990464:96099327 -t 87:<orig-type-guid> -u 87:<orig-unique-guid> -c 87:userdata \
+       -n 88:0:+512M            -t 88:0700            -c 88:ROCKNIX \
+       -n 89:0:0                -t 89:8300            -c 89:STORAGE \
+       /dev/mmcblk1
+partx -u /dev/mmcblk1
+lsblk -o NAME,SIZE,PARTLABEL /dev/mmcblk1 | tail -5   # verify sizes BEFORE writing anything
+```
 
-# 3. New partitions in the remainder
-sgdisk -n 0:0:+512M -t 0:0700 -c 0:ROCKNIX /dev/mmcblk1
-sgdisk -n 0:0:0     -t 0:8300 -c 0:STORAGE /dev/mmcblk1
+`parted rm` would have let the recreated entry take the Linux-data type GUID and a new unique GUID;
+Android's fstab uses by-name, but Qualcomm's bootloader/fastboot look partitions up by type GUID, so
+both are preserved above.
+
+```sh
+# 3. Wipe the start of userdata and the stale encryption metadata
+wipefs -a /dev/mmcblk1p87
+dd if=/dev/zero of=/dev/mmcblk1p87 bs=1M count=8 status=none
+dd if=/dev/zero of=/dev/mmcblk1p75 bs=1M count=64 status=none   # metadata: recreated by Android
+# never touch p74 (persist): it holds device calibration that cannot be regenerated
+
+# 4. Filesystems
 mkfs.vfat -F 32 -n ROCKNIX /dev/mmcblk1p88
 mkfs.ext4 -F -q -L STORAGE -O ^orphan_file -m 0 /dev/mmcblk1p89
+e2fsck -fn /dev/mmcblk1p89
 
-# 4. Boot files (mount SD p1 read-only and mirror it)
-mkdir -p /mnt/rk && mount /dev/mmcblk1p88 /mnt/rk
-cp -a /mnt/sdboot/. /mnt/rk/ && sync && umount /mnt/rk
+# 5. Boot files: mirror the SD boot partition, then compare
+mkdir -p /mnt/rk /mnt/sdboot
+mount /dev/mmcblk1p88 /mnt/rk
+mount -o ro /dev/mmcblk0p1 /mnt/sdboot
+cp -a /mnt/sdboot/. /mnt/rk/
+sync
+diff -r /mnt/sdboot /mnt/rk          # must be identical before removing the card
 
-# 5. Rootfs
-mkdir -p /mnt/emmc && mount /dev/mmcblk1p89 /mnt/emmc
-rsync -aHAX --numeric-ids --info=progress2 / /mnt/emmc/ \
-      --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp \
-      --exclude=/mnt --exclude=/media --exclude=/lost+found
-sync && umount /mnt/emmc
+# 6. Rootfs: bind-mount / and rsync with -x (do NOT exclude the mountpoint directories,
+#    rsync would then not create /proc, /sys, /dev, /run, /tmp and boot would fail)
+mkdir -p /mnt/emmc /mnt/src
+mount /dev/mmcblk1p89 /mnt/emmc
+mount --bind / /mnt/src
+rsync -aHAXS --numeric-ids /mnt/src/ /mnt/emmc/
+mkdir -p /mnt/emmc/proc /mnt/emmc/sys /mnt/emmc/dev /mnt/emmc/run /mnt/emmc/tmp
+chmod 1777 /mnt/emmc/tmp
+sync
+umount /mnt/src
+e2fsck -fn /dev/mmcblk1p89
 ```
+
+Notes on the copy: `-x` keeps it on the root filesystem, so `/proc`, `/sys`, `/dev`, `/run`, `/tmp`
+(the tmpfs) and `/mnt` are not descended into; the empty directories are created explicitly above.
+`machine-id` and `/var/lib/systemd/random-seed` are copied deliberately. No `update-initramfs` is
+needed: the initrd finds the root by label. Later kernel updates must write to the eMMC `ROCKNIX`
+partition, not the SD.
 
 Then power off, remove the SD, power on holding **Volume Down**, set *Boot source* to internal
 (keeping *Boot mode* = Linux), and start. If both media carry the same `STORAGE` label the boot can be
@@ -108,18 +150,21 @@ is lost — the card is untouched and still boots the old system.
 
 ### Points that need care
 
-- **Label collision.** SD `p2` and eMMC `STORAGE` would both be `STORAGE`. Either remove the card
-  when booting internal (simplest) or relabel the card's rootfs (`e2label /dev/mmcblk0p2 STORAGE-SD`)
-  once the card is only a rescue medium.
-- **Partition numbers.** The script above assumes `userdata` is 87 and the new ones become 88/89.
-  Verify with `sgdisk -p` before running; do not hardcode blindly.
-- **ABL.** The ROCKNIX ABL scans for the `ROCKNIX` label and boots it; `installtointernal` ends with
-  "reboot and remove the SD card", so internal boot is the expected path. Keep the SD intact as a
-  rescue boot until the internal install is proven.
+- **Label collision.** Until the SD is retired, there are two `ROCKNIX` and two `STORAGE` labels and
+  the winner is undefined (ABL, udev's by-label links, `/duo-init`). Boot internal with the card out.
+  Once internal boot is proven, relabel the card (`fatlabel`/`e2label` to `ROCKNIX_SD`/`STORAGE_SD`)
+  and adjust its extlinux and fstab, or keep it purely as an offline backup.
+- **Android metadata.** Resizing userdata without wiping `metadata` is the classic cause of a
+  decryption failure loop; `fastboot -w` wipes it for that reason. It is backed up and zeroed above.
+  Never touch `persist` (device calibration).
+- **Partition identity.** Preserve userdata's type and unique GUID; the number stays 87 because it is
+  reused after the delete.
+- **ABL.** Booting internal is a boot-source choice in the ABL menu (Volume Down at power-on):
+  *Boot mode* = Linux, *Boot source* = internal. Switching back to SD Card is the rescue path.
 - **initrd.** Unchanged: it is copied with the boot files and still finds `root=LABEL=STORAGE`.
-- **Backups.** Before touching the table: the GPT backup above, plus an image of the SD card if it
-  is the only copy of the current system. The Android system partitions are not modified, so they do
-  not need an image; userdata is going to be reset by design.
+- **Backups.** GPT of both disks, `metadata`, `misc`, `boot_a`, and the first 16 MiB of userdata are
+  in `out/backups/` off-device. The Android system partitions are not modified.
+
 
 ## Verification after the move
 
