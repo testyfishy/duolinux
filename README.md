@@ -69,6 +69,10 @@ repository (see `.gitignore`).
   hi-res wheel scrolling (InputPlumber profiles cannot emit wheel events).
 - **`duo-pad-node`**: recreates the physical gamepad's `/dev/input/event*` node, which InputPlumber
   hides from userspace.
+- **`duo-tailscale`**: a tray indicator for tailscaled. Tailscale's Linux package ships no GUI at
+  all (only `tailscale` and `tailscaled`), so this is a small GTK/Ayatana indicator over the local
+  CLI: state and Tailscale IP, log in (opens the auth URL), connect/disconnect, copy IP. It needs
+  `tailscale set --operator=<user>` on the daemon and autostarts with the session.
 - **`duo-fan`**: a fan-curve daemon modelled on lm-sensors `fancontrol` (averaging window,
   interpolated curve, hysteresis, dwell, MINSTART kick, MINSTOP floor, rate limiting) with
   quiet / balanced / performance profiles. It takes `pwm1` away from the kernel thermal governor.
