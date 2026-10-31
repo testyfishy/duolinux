@@ -187,3 +187,33 @@ stable link for streaming. Alternatives considered:
 - Leaving it unpinned and relying on wpa_supplicant: does not move, as measured.
 - A dispatcher script calling `wpa_cli roam` when signal drops: works (proven
   by the forced roam above) but is a workaround, not configuration.
+
+## iwd was tried and rejected
+
+iwd ranks access points by estimated data rate and has an explicit 5 GHz band
+modifier, so it was trialled as the NetworkManager backend
+([device] wifi.backend=iwd) with an automatic rollback if connectivity failed.
+
+It failed. After the switch the driver could not install keys:
+
+    ath10k_snoc c800000.wifi: failed to install key for vdev 0 peer ...: -110
+    wlan0: failed to remove key ... from hardware (-110)
+
+-110 is a timeout; the firmware does not accept iwd's key handling. The rollback
+removed the backend, re-enabled wpa_supplicant, restarted NetworkManager and
+re-pinned the band. Wi-Fi came back on 2.4 GHz at -41 dBm.
+
+## Switching bands on request
+
+The default is 2.4 GHz for range and stability. 5 GHz is available deliberately:
+
+    duo-wifi-band 2g        # default: 2.4 only (stable over distance)
+    duo-wifi-band 5g        # 5 GHz only, when close to the router
+    duo-wifi-band auto      # remove the pin and let wpa_supplicant decide
+    duo-wifi-band status    # what is in force, plus freq/signal/bitrate
+
+It is a thin wrapper over `nmcli connection modify ... 802-11-wireless.band`,
+not a daemon. Pinning is the only configuration-level control on this stack:
+there is no signal threshold or per-BSSID blacklist exposed by NetworkManager
+1.52, and wpa_supplicant's own preference is what keeps choosing the weak 5 GHz
+link.
