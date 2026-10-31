@@ -159,3 +159,31 @@ USB** in the ABL menu. This is less tested than microSD; a cheap USB card reader
 - Press the ABL menu buttons.
 
 Those are the only physical actions left.
+
+## Band selection (5 GHz vs 2.4 GHz)
+
+The router publishes one SSID on both bands. NetworkManager does configure
+wpa_supplicant's background scan - verified at runtime:
+
+    wpa_cli -i wlan0 get_network 0 bgscan  ->  simple:30:-65:300
+
+A forced roam to the 2.4 GHz BSSID sticks, and the client is not pushed back to
+5 GHz, so the router is not band-steering. What actually happens is that
+wpa_supplicant's roaming decision is throughput-based: at -74 dBm the 5 GHz link
+(80 MHz VHT) still scores a higher estimated rate than the 2.4 GHz link (HT), so
+it keeps the weak 5 GHz BSSID.
+
+That is a policy choice, not a driver bug. The consequence here was severe:
+7.2 Mbit/s at -84 dBm versus 72 Mbit/s at -38 dBm on 2.4 GHz, which turned a
+1080p60 stream from clean into hundreds of unrecoverable frames.
+
+Current setting: the connection is pinned with `802-11-wireless.band bg`. It
+loses 5 GHz throughput when the device is close to the router, but gives a
+stable link for streaming. Alternatives considered:
+
+- `iwd` as the NetworkManager backend, which has an explicit
+  `BandModifier5GHz` and roams on estimated data rate. Not tried; it is thinner
+  on ath10k_snoc and would need a rollback plan.
+- Leaving it unpinned and relying on wpa_supplicant: does not move, as measured.
+- A dispatcher script calling `wpa_cli roam` when signal drops: works (proven
+  by the forced roam above) but is a workaround, not configuration.
