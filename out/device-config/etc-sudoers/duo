@@ -1,0 +1,5 @@
+# The desktop session may run these three root helpers without a prompt.
+# Everything else requires the account password.
+duo ALL=(root) NOPASSWD: /usr/local/bin/duo-bottom-detect
+duo ALL=(root) NOPASSWD: /usr/local/bin/duo-controller-apply
+duo ALL=(root) NOPASSWD: /usr/local/bin/duo-scroll-set

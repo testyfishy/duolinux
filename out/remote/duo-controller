@@ -171,8 +171,8 @@ class Window(Gtk.Window):
 
     def on_natural_toggled(self, widget) -> None:
         value = "natural" if widget.get_active() else "standard"
-        subprocess.run(["sudo", "-n", "sh", "-c",
-                        f"printf '%s\\n' {value} > {SCROLL_FILE}"], check=False)
+        subprocess.run(["sudo", "-n", "/usr/local/bin/duo-scroll-set", value],
+                       check=False)
         self.status.set_text("Right stick: " + (
             "up scrolls up" if widget.get_active() else "inverted"))
 

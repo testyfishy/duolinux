@@ -1,6 +1,0 @@
-/* Single-user handheld: the desktop user is the administrator. */
-polkit.addRule(function(action, subject) {
-    if (subject.user == "duo" && subject.local && subject.active) {
-        return polkit.Result.YES;
-    }
-});
