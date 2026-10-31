@@ -1,41 +1,46 @@
-#!/bin/bash
-# Suspend policy: lid closed sleeps, everything else does not.
-# Also hand scrolling over to InputPlumber (the patched build), stopping the
-# Python daemon from emitting wheel events as well.
+#!/bin/sh
+# Make duo-lid the only thing that suspends on the lid.
 set -u
 
-echo "=== 1. allow suspend again (the mask blocked the lid too)"
-systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target 2>&1 | tail -3
+install -m 755 /tmp/duo-lid /usr/local/bin/duo-lid
+systemctl restart duo-lid
+sleep 2
+echo "duo-lid: $(systemctl is-active duo-lid)"
+journalctl -u duo-lid -n 3 --no-pager 2>&1 | tail -3
 
-echo "=== 2. logind owns the lid; idle never suspends"
-cat > /etc/systemd/logind.conf.d/duo.conf <<'EOF'
-# Handheld: closing the lid suspends, opening it resumes. Idle never suspends,
-# and the power key does not shut the device down.
-[Login]
-HandleLidSwitch=suspend
-HandleLidSwitchExternalPower=suspend
-HandleLidSwitchDocked=ignore
-HandlePowerKey=ignore
-HandlePowerKeyLongPress=poweroff
-HandleSuspendKey=ignore
-IdleAction=ignore
-EOF
-systemctl restart systemd-logind 2>/dev/null || true
-sleep 1
+python3 - <<'PY'
+import pathlib
 
-echo "=== 3. powerdevil must not idle-suspend on its own"
-su - duo -c '
+path = pathlib.Path("/home/duo/.config/powerdevilrc")
+text = path.read_text() if path.exists() else ""
+lines = text.splitlines()
+
+for profile in ("AC", "Battery", "LowBattery"):
+    header = f"[{profile}][LidAction]"
+    if header in lines:
+        index = lines.index(header)
+        replaced = False
+        for i in range(index + 1, len(lines)):
+            if lines[i].startswith("["):
+                break
+            if lines[i].startswith("action="):
+                lines[i] = "action=0"
+                replaced = True
+        if not replaced:
+            lines.insert(index + 1, "action=0")
+    else:
+        lines += ["", header, "action=0"]
+
+path.write_text("\n".join(lines).rstrip("\n") + "\n")
+print("powerdevilrc lid actions set to 0 (do nothing)")
+PY
+
+chown duo:duo /home/duo/.config/powerdevilrc
+su - duo -c 'XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart plasma-powerdevil' 2>&1
+sleep 5
+echo "powerdevil: $(su - duo -c 'XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-active plasma-powerdevil' 2>&1)"
 for g in AC Battery; do
-  kwriteconfig6 --file powerdevilrc --group "$g" --group SuspendSession --key idleTime 0
+    echo "$g lid action: $(su - duo -c "XDG_RUNTIME_DIR=/run/user/1000 kreadconfig6 --file powerdevilrc --group $g --group LidAction --key action" 2>&1)"
 done
-'
-
-echo "=== 4. scrolling now comes from InputPlumber"
-printf 'inputplumber\n' > /etc/duo/scroll-source
-printf 'wheel\n' > /etc/duo/scroll-source
-
-echo "=== effective lid settings:"
-systemd-analyze cat-config systemd/logind.conf 2>/dev/null | grep -E "^HandleLid|^IdleAction" | head -6
-
-echo "=== lid device present:"
-grep -c "gpio-keys-lid" /proc/bus/input/devices
+echo "=== inhibitors now:"
+systemd-inhibit --list 2>/dev/null | grep -iE "powerdevil|WHO" | head -3
