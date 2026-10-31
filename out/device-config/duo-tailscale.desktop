@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tailscale
+Comment=Open the Tailscale tray indicator
+Exec=/usr/bin/tailscale systray
+Icon=network-vpn
+Terminal=false
+Categories=Network;RemoteAccess;
+Keywords=tailscale;vpn;mesh;
