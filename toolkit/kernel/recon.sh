@@ -4,7 +4,7 @@
 set -uo pipefail
 WORK=${WORK:-$HOME/rocknix-nf}; mkdir -p "$WORK"; cd "$WORK"
 KEY=/mnt/c/path/to/duolinux/out/duo_ssh_key
-SSH="ssh -i '$KEY' -o BatchMode=yes -o StrictHostKeyChecking=no root@192.168.86.33"
+SSH="ssh -i '$KEY' -o BatchMode=yes -o StrictHostKeyChecking=no root@${DUO_HOST:-192.168.1.10}"
 
 echo "=== 1. device kernel facts"
 eval $SSH "'uname -r; cat /proc/version'"

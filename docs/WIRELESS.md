@@ -42,14 +42,14 @@ Start the guided pairing:
 It asks for two things:
 
 ```text
-pairing endpoint (IP:PORT): 192.168.1.50:37123
+pairing endpoint (IP:PORT): <host-ip>:<port>
 6-digit pairing code: 123456
 ```
 
 Use exactly what the pairing dialog shows. Then it asks for the **connect** endpoint:
 
 ```text
-connect endpoint (IP:PORT): 192.168.1.50:5555
+connect endpoint (IP:PORT): <host-ip>:<port>
 ```
 
 That is the IP:PORT on the main **Wireless debugging** screen, not the pairing dialog. The two ports

@@ -2,7 +2,7 @@
 # Objective suspend test: the device sleeps on an RTC alarm while we watch it
 # from outside. If it really sleeps, the network must go away and come back.
 set -uo pipefail
-H=192.168.86.33
+H=${DUO_HOST:-192.168.1.10}
 SSH="ssh -i $HOME/.ssh/duo_key -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@$H"
 
 echo "=== before: $(ping -c1 -W2 $H >/dev/null 2>&1 && echo reachable || echo unreachable)"

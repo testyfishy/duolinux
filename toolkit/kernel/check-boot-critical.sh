@@ -14,7 +14,7 @@ KEY=/mnt/c/path/to/duolinux/out/duo_ssh_key
 
 if [ ! -s "$RUN" ]; then
     tr -d '\r' < "$KEY" > ~/.ssh/duo_key; chmod 600 ~/.ssh/duo_key
-    ssh -i ~/.ssh/duo_key -o BatchMode=yes -o StrictHostKeyChecking=no root@192.168.86.33 'zcat /proc/config.gz' > "$RUN"
+    ssh -i ~/.ssh/duo_key -o BatchMode=yes -o StrictHostKeyChecking=no root@${DUO_HOST:-192.168.1.10} 'zcat /proc/config.gz' > "$RUN"
 fi
 echo "run config: $(wc -l < "$RUN") lines, new: $(wc -l < "$NEW") lines"
 

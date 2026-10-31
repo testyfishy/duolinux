@@ -1,7 +1,7 @@
 #!/bin/bash
 # Reboot N times and verify the display comes back each time.
 set -uo pipefail
-SSH="ssh -i $HOME/.ssh/duo_key -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 root@192.168.86.33"
+SSH="ssh -i $HOME/.ssh/duo_key -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 root@${DUO_HOST:-192.168.1.10}"
 N=${1:-2}
 
 check() {

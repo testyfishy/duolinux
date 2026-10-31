@@ -63,7 +63,7 @@ The cockpit reads hosts from `/etc/duo/duo.conf`:
 
 ```ini
 [ssh]
-hosts = server, root@192.168.1.20, desktop
+hosts = server, root@<host-ip>, desktop
 ```
 
 Anything `ssh` accepts works, including aliases from `~/.ssh/config`.

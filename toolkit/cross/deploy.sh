@@ -9,7 +9,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HOST="${DUO_HOST:-root@192.168.86.33}"
+HOST="${DUO_HOST:-root@192.168.1.10}"
 BIN="$REPO/out/build/inputplumber"
 KEY="$HOME/.ssh/duo_ssh_key"
 
