@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""duo-tailscale - a status tray indicator for tailscaled.
+
+Tailscale's Linux package ships no GUI: `tailscale` and `tailscaled` only. This
+is a small client for the local API that every tailscaled already exposes, built
+on the GTK/Ayatana libraries the device already has, so Plasma shows it in the
+system tray like any other indicator.
+
+It is read-mostly: it never edits state files, and every action it takes is one
+of the documented CLI verbs (`up`, `down`, `status`).
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import threading
+import webbrowser
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("AyatanaAppIndicator3", "0.1")
+
+from gi.repository import AyatanaAppIndicator3 as AppIndicator  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+
+POLL_MS = 3000
+TAILSCALE = shutil.which("tailscale") or "/usr/bin/tailscale"
+ADMIN_URL = "https://login.tailscale.com/admin/machines"
+
+STATE_TEXT = {
+    "NoState": "Not running",
+    "NeedsLogin": "Needs login",
+    "NeedsMachineAuth": "Awaiting approval",
+    "Stopped": "Disconnected",
+    "Starting": "Starting…",
+    "Running": "Connected",
+}
+
+
+def open_url(url):
+    """Open in the desktop browser. xdg-open is the reliable path on Wayland;
+    Python's browser list is not guaranteed to include it."""
+    try:
+        subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+        return
+    except OSError:
+        pass
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+
+
+def run(args, timeout=20):
+    """Run a tailscale verb. Returns (returncode, stdout, stderr)."""
+    try:
+        p = subprocess.run(
+            [TAILSCALE] + args,
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return p.returncode, p.stdout, p.stderr
+    except subprocess.TimeoutExpired:
+        return 1, "", "timed out"
+    except FileNotFoundError:
+        return 1, "", "tailscale binary not found"
+
+
+def read_status():
+    rc, out, _ = run(["status", "--json"], timeout=10)
+    if rc != 0 or not out.strip():
+        return None
+    try:
+        return json.loads(out)
+    except ValueError:
+        return None
+
+
+class TailscaleTray:
+    def __init__(self):
+        self.indicator = AppIndicator.Indicator.new(
+            "duo-tailscale",
+            "network-vpn",
+            AppIndicator.IndicatorCategory.SYSTEM_SERVICES,
+        )
+        self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+        self.indicator.set_title("Tailscale")
+
+        self.menu = Gtk.Menu()
+        self.opened_auth_for = None
+        self.busy = False
+        self._build()
+        self.indicator.set_menu(self.menu)
+
+        self.refresh()
+        GLib.timeout_add(POLL_MS, self.refresh)
+
+    # ---- state -----------------------------------------------------------
+
+    def state(self):
+        st = read_status()
+        if st is None:
+            return None
+        return {
+            "backend": st.get("BackendState") or "NoState",
+            "auth": st.get("AuthURL") or "",
+            "ips": st.get("TailscaleIPs") or [],
+            "host": (st.get("Self") or {}).get("HostName") or "",
+            "dns": (st.get("Self") or {}).get("DNSName") or "",
+        }
+
+    def refresh(self):
+        s = self.state()
+        if self.busy:
+            return True
+
+        if s is None:
+            label = "Tailscale: unavailable"
+            icon = "network-vpn-disconnected-symbolic"
+        else:
+            text = STATE_TEXT.get(s["backend"], s["backend"])
+            label = "Tailscale: " + text
+            if s["ips"]:
+                label += " · " + ", ".join(s["ips"])
+            icon = "network-vpn" if s["backend"] == "Running" else "network-vpn-disconnected"
+
+        self.indicator.set_icon_full(icon, "Tailscale")
+        self._populate(s, label)
+        return True
+
+    # ---- menu ------------------------------------------------------------
+
+    def _build(self):
+        pass  # menu is rebuilt on every poll so it always matches the daemon
+
+    def _populate(self, s, label):
+        for child in self.menu.get_children():
+            self.menu.remove(child)
+
+        head = Gtk.MenuItem(label=label)
+        head.set_sensitive(False)
+        self.menu.append(head)
+
+        if s is None:
+            item = Gtk.MenuItem(label="Is tailscaled running?")
+            item.set_sensitive(False)
+            self.menu.append(item)
+        else:
+            if s["backend"] in ("NeedsLogin", "NeedsMachineAuth"):
+                url = s["auth"]
+                if url:
+                    item = Gtk.MenuItem(label="Open login page…")
+                    item.connect("activate", lambda *_: open_url(url))
+                    self.menu.append(item)
+                item = Gtk.MenuItem(label="Log in")
+                item.connect("activate", lambda *_: self.action(["up", "--accept-dns=false"]))
+                self.menu.append(item)
+            elif s["backend"] == "Running":
+                item = Gtk.MenuItem(label="Disconnect")
+                item.connect("activate", lambda *_: self.action(["down"]))
+                self.menu.append(item)
+            else:
+                item = Gtk.MenuItem(label="Connect")
+                item.connect("activate", lambda *_: self.action(["up", "--accept-dns=false"]))
+                self.menu.append(item)
+
+            if s["ips"]:
+                item = Gtk.MenuItem(label="Copy Tailscale IP")
+                ip = s["ips"][0]
+                item.connect(
+                    "activate",
+                    lambda *_: Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(ip, -1),
+                )
+                self.menu.append(item)
+
+        self.menu.append(Gtk.SeparatorMenuItem())
+
+        item = Gtk.MenuItem(label="Admin console")
+        item.connect("activate", lambda *_: open_url(ADMIN_URL))
+        self.menu.append(item)
+
+        item = Gtk.MenuItem(label="Refresh")
+        item.connect("activate", lambda *_: self.refresh())
+        self.menu.append(item)
+
+        self.menu.append(Gtk.SeparatorMenuItem())
+        item = Gtk.MenuItem(label="Quit")
+        item.connect("activate", lambda *_: Gtk.main_quit())
+        self.menu.append(item)
+
+        self.menu.show_all()
+
+    # ---- actions ---------------------------------------------------------
+
+    def action(self, args):
+        if self.busy:
+            return
+        self.busy = True
+        threading.Thread(target=self._worker, args=(args,), daemon=True).start()
+
+    def _worker(self, args):
+        rc, out, err = run(args, timeout=90)
+        GLib.idle_add(self._done, rc, out, err)
+
+    def _done(self, rc, out, err):
+        self.busy = False
+        # `tailscale up` parks until the device is authorised; surface the URL
+        # and open it once instead of leaving the user with a silent no-op.
+        text = (out or "") + (err or "")
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("https://login.tailscale.com/"):
+                if line != self.opened_auth_for:
+                    self.opened_auth_for = line
+                    open_url(line)
+        self.refresh()
+        return False
+
+
+def main():
+    tray = TailscaleTray()
+    Gtk.main()
+    return tray
+
+
+if __name__ == "__main__":
+    main()
