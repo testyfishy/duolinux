@@ -106,27 +106,53 @@ device ties it up for tens of minutes and gains nothing: the target is aarch64 a
 not need the hardware. Only build on the device when the PC toolchain cannot reproduce the target
 environment (for example, if a dependency has no arm64 headers or is fetched differently there).
 
-One-time setup, inside WSL:
+What we compile, and where:
+
+| Component | Language | Script | Output |
+|---|---|---|---|
+| Kernel + modules | C | `toolkit/kernel/build-nf-7.2.11.sh` | `~/rocknix-nf/KERNEL-7.2.11-nf`, `modules-*.tgz` |
+| InputPlumber (patched) | Rust | `toolkit/cross/build-inputplumber.sh` | `out/build/inputplumber` |
+| wvkbd (uinput fork) | C | `toolkit/cross/build-wvkbd.sh` | `~/builds/out/wvkbd-mobintl` |
+| whisper.cpp (local STT) | C/C++ | `toolkit/cross/build-whispercpp.sh` | `~/builds/out/whisper-cli` |
+
+Not built from source, on purpose: mpv, kate, Tsukimi, Moonlight, the Jellyfin client, Tailscale —
+Debian and Flathub already ship arm64 binaries for these, and rebuilding them would only introduce
+support burden.
+
+### One-time setup (inside WSL)
 
 ```sh
-wsl -d Ubuntu-26.04 -u root bash toolkit/cross/setup-root.sh   # cross gcc + arm64 sysroot
-wsl -d Ubuntu-26.04           bash toolkit/cross/setup-rust.sh  # rustup + aarch64 target
+wsl -d Ubuntu-26.04 -u root bash toolkit/cross/setup-root.sh     # cross gcc + minimal sysroot
+wsl -d Ubuntu-26.04 -u root bash toolkit/cross/setup-sysroot.sh  # + wayland/gtk libs for wvkbd
+wsl -d Ubuntu-26.04           bash toolkit/cross/setup-rust.sh   # rustup + aarch64 target
 ```
 
-`setup-root.sh` installs `gcc-aarch64-linux-gnu` and extracts the arm64 runtime/development packages
-(`libdbus-1-dev`, `libudev-dev`, `libiio-dev` and their libraries) into `/srv/duo-arm64-sysroot`.
-It uses `dpkg-deb -x` rather than a chroot, because WSL2 here has no binfmt/qemu for arm64.
+`setup-sysroot.sh` downloads the arm64 `-dev` packages from Debian **trixie** and unpacks them into
+`/srv/duo-arm64-sysroot` with `dpkg-deb -x`. That matters: the sysroot carries the device's own glibc
+(2.41), so a binary cannot be linked against a newer one than the device has. `apt` is told to ignore
+the host's dpkg status, so no package installed on the PC leaks in.
 
-Build and deploy a patched InputPlumber:
+### Building
 
 ```sh
-wsl -d Ubuntu-26.04 bash toolkit/cross/build-inputplumber.sh   # -> out/build/inputplumber
-wsl -d Ubuntu-26.04 bash toolkit/cross/deploy.sh               # scp + restart, keeps a .bak
+wsl -d Ubuntu-26.04 bash toolkit/cross/build-wvkbd.sh      # needs the patched source tree
+wsl -d Ubuntu-26.04 bash toolkit/cross/build-whispercpp.sh
+wsl -d Ubuntu-26.04 bash toolkit/cross/build-inputplumber.sh
+wsl -d Ubuntu-26.04 bash toolkit/cross/deploy-and-verify.sh  # scp + install + smoke test
 ```
 
-The build applies every patch in `out/inputplumber-fork/` (`0001-axis-to-wheel`,
-`0002-idle-backoff`) to the upstream `v0.82.0` tarball and cross-compiles with
-`--target aarch64-unknown-linux-gnu`, using `PKG_CONFIG_SYSROOT_DIR` for the arm64 libraries.
+`build-wvkbd.sh` builds the exact tree that shipped on the device (`scp -r
+root@duo:/root/wvkbd-0.15 ~/builds/wvkbd`), so only the compiler changes.
+
+### Two pitfalls that cost real time
+
+- **Absolute symlinks in the sysroot.** Debian's `libm.so.6` is a symlink to
+  `/lib/aarch64-linux-gnu/libm.so.6`; `ld` follows that literally and fails. Add
+  `-Wl,--sysroot=/srv/duo-arm64-sysroot` to the link flags.
+- **Do not link dynamically against the Ubuntu cross libstdc++.** It references `GLIBC_2.43`, while
+  Debian 13 on the device is 2.41, so the binary dies at startup. whisper.cpp is linked `-static`
+  (`-DCMAKE_EXE_LINKER_FLAGS=-static`), which removes the whole problem; that is why its runtime
+  dependency list is empty.
 
 ## Reproducibility
 

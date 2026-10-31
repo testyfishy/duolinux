@@ -8,7 +8,7 @@ SSH="ssh -i $KEY -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=
 
 echo "=== artefact"
 ls -l "$W/KERNEL-7.2.11-nf" "$W/modules-7.2.11-nf.tgz"
-zcat "$W/KERNEL-7.2.11-nf" | strings | grep -m1 "Linux version"
+zcat "$W/KERNEL-7.2.11-nf" | strings | grep -m1 "Linux version" || true
 
 echo
 echo "=== ship + install"
