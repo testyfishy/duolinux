@@ -34,7 +34,7 @@ repo is about making a normal desktop usable with those.
 | `out/device-config/` | Snapshot of the live device configuration: `/etc/duo`, InputPlumber profiles, systemd units, udev and polkit rules, KWin/KDE settings, `duo-session`. This is what makes the setup reproducible rather than just the scripts |
 | `out/overlay/` | USB-gadget networking, ssh self-heal and diagnostics units |
 | `out/wvkbd-0.15/` | Forked on-screen keyboard (GPLv3), see below |
-| `out/vboard-fork/` | Vboard fork, tried and rejected; kept for reference only (GPLv3) |
+| `out/inputplumber-fork/` | Patch adding axis-to-wheel support to InputPlumber, plus publishing notes |
 | `docs/` | Bring-up notes: boot chain, hardware map, build pipeline, status ledger |
 | `tests/` | Unit tests for the image/boot.img builders |
 
@@ -158,9 +158,9 @@ make            # needs wayland, pango/cairo, xkbcommon dev packages
   `os-compatibility.[ch]` under MIT/X (`COPYING_WESTON`). The changes are listed in
   `NOTICE.duolinux` and are themselves GPLv3. The commit history shows the unmodified upstream
   import followed by the patch.
-- **`out/vboard-fork/`** is a modified copy of [Vboard](https://github.com/mdev588/vboard),
-  (c) 2025 mdev588, (c) 2026 Archisman Panigrahi, **GPLv3** (`LICENSE`, `NOTICE.duolinux`).
+- **`out/inputplumber-fork/`** is a patch against [InputPlumber](https://github.com/ShadowBlip/InputPlumber)
+  v0.82.0, **GPLv3** like upstream. It is a patch file, not a redistribution of the source.
 - Kernel, firmware, openABL and InputPlumber come from their upstream projects under their own
   licences and are not redistributed here.
 
-If you redistribute the forks, keep their licence files and copyright notices intact.
+If you redistribute the keyboard fork, keep its licence files and copyright notices intact.
