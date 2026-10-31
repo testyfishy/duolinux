@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""Suspend when the lid closes.
+"""Suspend when the lid is genuinely closed.
 
-logind detects the lid (SW_LID on gpio-keys-lid) but PowerDevil suppresses the
-action because it sees the DP-1 panel as an external monitor, so nothing
-happens. This watches the switch itself and asks systemd to suspend, which
-bypasses that suppression. Opening the lid wakes the machine as usual.
+PowerDevil takes the handle-lid-switch inhibitor and its own lid action was
+unset, so KDE's default suspended the machine on any lid event - including a
+bounce while the lid was open and the device was on the charger. PowerDevil's
+lid action is now "do nothing" for every profile, and this daemon is the only
+thing that suspends.
 
-A short dwell avoids acting on a bounce, and it only reacts to changes, so a
-lid already closed at boot does not immediately suspend.
+A close must stay closed for CLOSE_DWELL seconds and still read as closed from
+the switch itself before anything happens, so a single glitchy event cannot put
+the device to sleep. Opening the lid always wakes the machine and restores both
+panels, which is why the daemon blanks them before suspending: suspend blanks
+DSI-1 but the DP-1 panel behind the bridge stays lit and the device looks
+half-awake.
 """
+import fcntl
 import os
 import select
 import struct
@@ -17,10 +23,11 @@ import time
 
 EV_SW = 0x05
 SW_LID = 0x00
-DEBOUNCE = 0.5
-TICK = 0.5
+EVIOCGSW = 0x8008451B  # _IOC(READ, 'E', 0x1b, 8)
 
 DEVICE = "gpio-keys-lid"
+TICK = 0.25
+CLOSE_DWELL = 2.0
 
 
 def find_device() -> str | None:
@@ -36,10 +43,38 @@ def find_device() -> str | None:
     return None
 
 
+def switch_closed(fd: int) -> int:
+    """Current SW_LID: 1 closed, 0 open, -1 unknown."""
+    buffer = bytearray(8)
+    try:
+        fcntl.ioctl(fd, EVIOCGSW, buffer, True)
+    except OSError:
+        return -1
+    return int.from_bytes(buffer, "little") & 1
+
+
+def blank(write: bool) -> None:
+    if write:
+        subprocess.run(["systemctl", "stop", "duo-brightness-guard"], check=False)
+        for device in ("backlight", "serial0-0"):
+            try:
+                with open(f"/sys/class/backlight/{device}/brightness", "w") as handle:
+                    handle.write("0")
+            except OSError:
+                pass
+    else:
+        for device, level in (("backlight", "150"), ("serial0-0", "255")):
+            try:
+                with open(f"/sys/class/backlight/{device}/brightness", "w") as handle:
+                    handle.write(level)
+            except OSError:
+                pass
+        subprocess.run(["systemctl", "start", "duo-brightness-guard"], check=False)
+
+
 def main() -> int:
     fd = None
-    closed = None
-    last_change = 0.0
+    pending_close = None
 
     while True:
         if fd is None:
@@ -49,7 +84,9 @@ def main() -> int:
                 continue
             try:
                 fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
-                print(f"duo-lid: watching {path}", flush=True)
+                print(f"duo-lid: watching {path} "
+                      f"(switch reports {'closed' if switch_closed(fd) else 'open'})",
+                      flush=True)
             except OSError:
                 time.sleep(2)
                 continue
@@ -57,7 +94,7 @@ def main() -> int:
         try:
             readable, _, _ = select.select([fd], [], [], TICK)
         except InterruptedError:
-            continue
+            readable = []
 
         if readable:
             try:
@@ -71,38 +108,26 @@ def main() -> int:
                     "@llHHi", data[offset:offset + 24])
                 if kind != EV_SW or code != SW_LID:
                     continue
-                now = time.time()
-                if closed is not None and value == closed:
-                    continue
-                if now - last_change < DEBOUNCE:
-                    continue
-                last_change = now
-                closed = value
-                print(f"duo-lid: lid {'closed' if value else 'opened'}",
-                      flush=True)
                 if value:
-                    # Blank both panels first: suspend blanks DSI-1 but the
-                    # DP-1 panel behind the bridge stays lit, which makes the
-                    # device look half-awake. The guard is stopped so it does
-                    # not re-pin the bottom panel while suspended.
-                    subprocess.run(["systemctl", "stop", "duo-brightness-guard"],
-                                   check=False)
-                    for device in ("backlight", "serial0-0"):
-                        try:
-                            with open(f"/sys/class/backlight/{device}/brightness", "w") as fh:
-                                fh.write("0")
-                        except OSError:
-                            pass
-                    subprocess.run(["systemctl", "suspend"], check=False)
+                    pending_close = time.time()
+                    print("duo-lid: lid closed, waiting before suspending", flush=True)
                 else:
-                    for device, level in (("backlight", "150"), ("serial0-0", "255")):
-                        try:
-                            with open(f"/sys/class/backlight/{device}/brightness", "w") as fh:
-                                fh.write(level)
-                        except OSError:
-                            pass
-                    subprocess.run(["systemctl", "start", "duo-brightness-guard"],
-                                   check=False)
+                    if pending_close is not None:
+                        print("duo-lid: lid reopened, canceling suspend", flush=True)
+                    pending_close = None
+                    blank(False)
+
+        if pending_close is not None and time.time() - pending_close >= CLOSE_DWELL:
+            pending_close = None
+            state = switch_closed(fd)
+            if state != 1:
+                print(f"duo-lid: close ignored, switch now reports state {state}",
+                      flush=True)
+                blank(False)
+                continue
+            print("duo-lid: lid still closed, suspending", flush=True)
+            blank(True)
+            subprocess.run(["systemctl", "suspend"], check=False)
 
 
 if __name__ == "__main__":

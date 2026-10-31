@@ -17,8 +17,8 @@ repo is about making a normal desktop usable with those.
 | Part | Details |
 |---|---|
 | SoC / GPU | Qualcomm SM6125 (SM6115 family), Adreno 610 |
-| Top screen | `DSI-1`, 1280x720 logical |
-| Bottom screen | `DP-1`, 1280x960, behind an Analogix DSI-to-DP bridge, placed below DSI-1 |
+| Top screen | `DSI-1`, 1080x1920@60 (rotated), scale 1.75 → 1098x618 logical |
+| Bottom screen | `DP-1`, 1280x960@60, behind an Analogix DSI-to-DP bridge, scale 1.16667 → 1098x823 logical, placed below DSI-1 |
 | Input | built-in gamepad (via InputPlumber), two touch panels, no keyboard |
 | Boot | openABL from the ROCKNIX project, kernel + DTB from the ROCKNIX SM6115 tree |
 | Storage | Debian rootfs on microSD; Android untouched |
