@@ -108,3 +108,25 @@ ssh -i out/duo_ssh_key -N -L 8384:127.0.0.1:8384 root@<device>
    suspend/resume.
 3. `tailscale ping <htpc>` reports a direct path, not DERP, and survives a
    reboot.
+
+## Jellyfin bitrate on 2.4 GHz Wi-Fi
+
+Measured in use: a 23 Mbit/s stream buffered constantly on this link (57-72 Mbit/s
+PHY at -45 to -50 dBm, i.e. ~40 % of the radio). Capping playback to **6-10
+Mbit/s removed the buffering entirely**.
+
+That is the whole story for HTTP streaming: Jellyfin serves over TCP, so packet
+loss or jitter turns into stalls rather than degraded frames, and there is no
+headroom left for retransmits when the link is already 40 % busy. The device was
+never the limit - it decodes 1080p60 H.264 at ~5x realtime.
+
+Contrast with Moonlight, which sustained 20 Mbit/s on the same link: it uses UDP
+with forward error correction, so loss is hidden instead of stalling.
+
+Practical settings:
+- Jellyfin per-user playback bitrate: 6-10 Mbit/s on 2.4 GHz.
+- The WebEngine UI costs more CPU than the video (jellyfin-desktop ~27 %,
+  QtWebEngine ~45 %), so jellyfin-mpv-shim is the lighter client when the CPU
+  matters.
+- 5 GHz is available on request via `duo-wifi-band 5g` when the device is close
+  to the router and a higher bitrate is wanted.
