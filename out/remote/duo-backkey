@@ -44,6 +44,9 @@ SCROLL_DEADZONE = 0.12
 SCROLL_MAX_HI_RES_PER_SEC = 2400   # 20 notches/second at full deflection
 HI_RES_STEP = 120
 TICK = 0.005
+# Idle tick: long, because select() wakes immediately for buttons and stick
+# deflection anyway. Only scroll integration needs the fast tick above.
+TICK_IDLE = 0.25
 
 PAD = "Retroid Pocket Duo Lite Gamepad"
 DUALSENSE = "Sony Interactive Entertainment DualSense Wireless Controller"
@@ -299,8 +302,16 @@ def main() -> int:
             continue
 
         # Block until an event arrives or the tick expires - no busy polling.
+        #
+        # The fast tick only matters while a stick is being integrated into
+        # scroll events; with scrolling delegated to InputPlumber there is
+        # nothing to integrate, and a 5 ms tick was costing ~2.5 % of a core
+        # around the clock for no work at all.
+        scrolling = (scroll_enabled() and active_source is not None
+                     and now - last_abs.get(active_source, 0) < 3.0)
+        timeout = TICK if scrolling else TICK_IDLE
         try:
-            readable, _, _ = select.select(list(handles.values()), [], [], TICK)
+            readable, _, _ = select.select(list(handles.values()), [], [], timeout)
         except InterruptedError:
             readable = []
 
