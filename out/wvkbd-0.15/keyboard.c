@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <sys/mman.h>
 #include "keyboard.h"
+#include "uinput.h"
 #include "drw.h"
 #include "os-compatibility.h"
 
@@ -273,6 +274,31 @@ kbd_get_layer_index(struct kbd *kb, struct layout *l)
     return 0;
 }
 
+/*
+ * Key output. uinput is preferred: it works on every compositor, including
+ * KWin, which does not implement the wlroots virtual-keyboard protocol.
+ */
+static void
+vk_send(struct kbd *kb, uint32_t code, uint32_t state)
+{
+    if (kb->uinput_fd >= 0) {
+        uinput_key(kb->uinput_fd, code,
+                   state == WL_KEYBOARD_KEY_STATE_PRESSED);
+    } else if (kb->vkbd) {
+        zwp_virtual_keyboard_v1_key(kb->vkbd, 0, code, state);
+    }
+}
+
+static void
+vk_mods(struct kbd *kb, uint32_t mods)
+{
+    if (kb->uinput_fd >= 0) {
+        uinput_mods(kb->uinput_fd, mods);
+    } else if (kb->vkbd) {
+        vk_mods(kb, mods);
+    }
+}
+
 void
 kbd_unpress_key(struct kbd *kb, uint32_t time)
 {
@@ -283,21 +309,23 @@ kbd_unpress_key(struct kbd *kb, uint32_t time)
 
         if (unlatch_shift) {
             kb->mods ^= Shift;
-            zwp_virtual_keyboard_v1_modifiers(kb->vkbd, kb->mods, 0, 0, 0);
+            vk_mods(kb, kb->mods);
         }
 
         if (kb->last_press->type == Copy) {
-            zwp_virtual_keyboard_v1_key(kb->vkbd, time, 127, // COMP key
-                                        WL_KEYBOARD_KEY_STATE_RELEASED);
+            if (kb->uinput_fd >= 0)
+                /* No temporary keymap exists for a kernel device: type the
+                 * code point as the standard Ctrl+Shift+U sequence. */
+                uinput_type_codepoint(kb->uinput_fd, kb->last_press->code);
+            else
+                zwp_virtual_keyboard_v1_key(kb->vkbd, 0, 127, /* COMP key */
+                                            WL_KEYBOARD_KEY_STATE_RELEASED);
         } else {
             if ((kb->last_press->code == KEY_SPACE) && (unlatch_shift)) {
                 // shift + space is tab
-                zwp_virtual_keyboard_v1_key(kb->vkbd, time, KEY_TAB,
-                                            WL_KEYBOARD_KEY_STATE_RELEASED);
+                vk_send(kb, KEY_TAB, WL_KEYBOARD_KEY_STATE_RELEASED);
             } else {
-                zwp_virtual_keyboard_v1_key(kb->vkbd, time,
-                                            kb->last_press->code,
-                                            WL_KEYBOARD_KEY_STATE_RELEASED);
+                vk_send(kb, kb->last_press->code, WL_KEYBOARD_KEY_STATE_RELEASED);
             }
         }
 
@@ -388,25 +416,21 @@ kbd_press_key(struct kbd *kb, struct key *k, uint32_t time)
     case Code:
         if (k->code_mod) {
             if (k->reset_mod) {
-                zwp_virtual_keyboard_v1_modifiers(kb->vkbd, k->code_mod, 0, 0,
-                                                  0);
+                vk_mods(kb, k->code_mod);
             } else {
-                zwp_virtual_keyboard_v1_modifiers(
-                    kb->vkbd, kb->mods ^ k->code_mod, 0, 0, 0);
+                vk_mods(kb, kb->mods ^ k->code_mod);
             }
         } else {
-            zwp_virtual_keyboard_v1_modifiers(kb->vkbd, kb->mods, 0, 0, 0);
+            vk_mods(kb, kb->mods);
         }
         kb->last_swipe = kb->last_press = k;
         kbd_draw_key(kb, k, Press);
         if ((k->code == KEY_SPACE) && (kb->mods & Shift)) {
             // shift space is tab
-            zwp_virtual_keyboard_v1_modifiers(kb->vkbd, 0, 0, 0, 0);
-            zwp_virtual_keyboard_v1_key(kb->vkbd, time, KEY_TAB,
-                                        WL_KEYBOARD_KEY_STATE_PRESSED);
+            vk_mods(kb, 0);
+            vk_send(kb, KEY_TAB, WL_KEYBOARD_KEY_STATE_PRESSED);
         } else {
-            zwp_virtual_keyboard_v1_key(kb->vkbd, time, kb->last_press->code,
-                                        WL_KEYBOARD_KEY_STATE_PRESSED);
+            vk_send(kb, kb->last_press->code, WL_KEYBOARD_KEY_STATE_PRESSED);
         }
         if (kb->print || kb->print_intersect)
             kbd_print_key_stdout(kb, k);
@@ -427,7 +451,7 @@ kbd_press_key(struct kbd *kb, struct key *k, uint32_t time)
                 kbd_draw_key(kb, k, Unpress);
             }
         }
-        zwp_virtual_keyboard_v1_modifiers(kb->vkbd, kb->mods, 0, 0, 0);
+        vk_mods(kb, kb->mods);
         break;
     case Layout:
         // switch to the layout determined by the key
@@ -479,11 +503,14 @@ kbd_press_key(struct kbd *kb, struct key *k, uint32_t time)
         kbd_draw_key(kb, k, Press);
         if (kb->debug)
             fprintf(stderr, "pressing copy key\n");
-        create_and_upload_keymap(kb, kb->layout->keymap_name, k->code,
-                                 k->code_mod);
-        zwp_virtual_keyboard_v1_modifiers(kb->vkbd, kb->mods, 0, 0, 0);
-        zwp_virtual_keyboard_v1_key(kb->vkbd, time, 127, // COMP key
-                                    WL_KEYBOARD_KEY_STATE_PRESSED);
+        if (kb->uinput_fd < 0) {
+            /* typed on release, see kbd_unpress_key */
+            create_and_upload_keymap(kb, kb->layout->keymap_name, k->code,
+                                     k->code_mod);
+            vk_mods(kb, kb->mods);
+            zwp_virtual_keyboard_v1_key(kb->vkbd, 0, 127, /* COMP key */
+                                        WL_KEYBOARD_KEY_STATE_PRESSED);
+        }
         if (kb->print || kb->print_intersect)
             kbd_print_key_stdout(kb, k);
         break;
@@ -664,6 +691,11 @@ void
 create_and_upload_keymap(struct kbd *kb, const char *name, uint32_t comp_unichr,
                          uint32_t comp_shift_unichr)
 {
+    /* A kernel input device has no compositor keymap to upload; the receiving
+     * application interprets the keycodes with its own layout. */
+    if (kb->uinput_fd >= 0)
+        return;
+
     int keymap_index = -1;
     for (int i = 0; i < NUMKEYMAPS; i++) {
         if (!strcmp(keymap_names[i], name)) {

@@ -17,6 +17,7 @@
 #include <wchar.h>
 
 #include "keyboard.h"
+#include "uinput.h"
 #include "config.h"
 
 /* lazy die macro */
@@ -50,11 +51,14 @@ static bool popup_xdg_surface_configured;
 
 struct Output {
     uint32_t name;
+    char *wlname;
     uint32_t w, h;
     double scale;
     struct wl_output *data;
 };
 static struct Output *current_output;
+static const char *requested_output_name;
+static struct wl_output *requested_output_data;
 
 #define WL_OUTPUTS_LIMIT 8
 static struct Output wl_outputs[WL_OUTPUTS_LIMIT];
@@ -437,7 +441,29 @@ display_handle_mode(void *data, struct wl_output *wl_output, uint32_t flags,
 {
 }
 
+static void
+display_handle_description(void *data, struct wl_output *wl_output,
+                           const char *description)
+{
+    (void)data;
+    (void)wl_output;
+    (void)description;
+}
+
+static void
+display_handle_name(void *data, struct wl_output *wl_output, const char *name)
+{
+    struct Output *output = data;
+    if (!name)
+        return;
+    output->wlname = estrdup(name);
+    if (requested_output_name && strcmp(name, requested_output_name) == 0)
+        requested_output_data = wl_output;
+}
+
 static const struct wl_output_listener output_listener = {
+    .name = display_handle_name,
+    .description = display_handle_description,
     .geometry = display_handle_geometry,
     .mode = display_handle_mode,
     .done = display_handle_done,
@@ -466,7 +492,7 @@ handle_global(void *data, struct wl_registry *registry, uint32_t name,
         if (wl_outputs_size < WL_OUTPUTS_LIMIT) {
             struct Output *output = &wl_outputs[wl_outputs_size];
             output->data =
-                wl_registry_bind(registry, name, &wl_output_interface, 2);
+                wl_registry_bind(registry, name, &wl_output_interface, version < 4 ? version : 4);
             output->name = name;
             output->scale = 1;
             wl_output_add_listener(output->data, &output_listener, output);
@@ -676,6 +702,7 @@ usage(char *argv0)
             argv0);
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "  -D          - Enable debug\n");
+    fprintf(stderr, "  --output NAME - Bind the keyboard to this output\n");
     fprintf(stderr, "  -o          - Print pressed keys to standard output\n");
     fprintf(stderr,
             "  -O          - Print intersected keys to standard output\n");
@@ -763,8 +790,13 @@ show()
     }
 
     struct wl_output *current_output_data = NULL;
-    if (current_output)
+    if (requested_output_name) {
+        for (int tries = 0; tries < 20 && !requested_output_data; tries += 1)
+            wl_display_roundtrip(display);
+        current_output_data = requested_output_data;
+    } else if (current_output) {
         current_output_data = current_output->data;
+    }
 
     layer_surface = zwlr_layer_shell_v1_get_layer_surface(
         layer_shell, draw_surf.surf, current_output_data, layer, namespace);
@@ -852,6 +884,11 @@ main(int argc, char **argv)
         } else if ((!strcmp(argv[i], "-h")) || (!strcmp(argv[i], "--help"))) {
             usage(argv[0]);
             exit(0);
+        } else if ((!strcmp(argv[i], "--output"))) {
+            if (i >= argc - 1) {
+                usage(argv[0]);
+            }
+            requested_output_name = estrdup(argv[++i]);
         } else if (!strcmp(argv[i], "-l")) {
             if (i >= argc - 1) {
                 usage(argv[0]);
@@ -1027,17 +1064,25 @@ main(int argc, char **argv)
     if (wm_base == NULL) {
         die("wm_base not available\n");
     }
-    if (vkbd_mgr == NULL) {
-        die("virtual_keyboard_manager not available\n");
+    /* Prefer uinput: KWin does not implement the virtual-keyboard protocol,
+     * so on Plasma this is the only way keys can be delivered at all. */
+    keyboard.uinput_fd = uinput_open();
+    if (keyboard.uinput_fd < 0) {
+        fprintf(stderr, "wvkbd: uinput unavailable, falling back to protocol\n");
+    }
+    if (vkbd_mgr == NULL && keyboard.uinput_fd < 0) {
+        die("no way to send keys (neither uinput nor virtual_keyboard)\n");
     }
 
     empty_region = wl_compositor_create_region(compositor);
     popup_xdg_positioner = xdg_wm_base_create_positioner(wm_base);
 
-    keyboard.vkbd =
-        zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(vkbd_mgr, seat);
-    if (keyboard.vkbd == NULL) {
-        die("failed to init virtual keyboard_manager\n");
+    if (vkbd_mgr != NULL) {
+        keyboard.vkbd = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(
+            vkbd_mgr, seat);
+        if (keyboard.vkbd == NULL) {
+            fprintf(stderr, "wvkbd: no virtual keyboard object\n");
+        }
     }
 
     kbd_init(&keyboard, (struct layout *)&layouts, layer_names_list,
