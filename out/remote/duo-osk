@@ -1,0 +1,64 @@
+#!/bin/sh
+# On-screen keyboard, bound to the BOTTOM panel by output name.
+#
+# This uses a patched wvkbd (v0.15 + --output) so the layer surface is created
+# on DP-1 explicitly. It no longer relies on which output happens to be focused,
+# so the keyboard can never appear on the top screen.
+BOTTOM=DP-1
+STATE=/run/user/$(id -u)/duo-osk.on
+
+CONF="$HOME/.config/duo/kbd-height"
+H=560
+[ -f "$CONF" ] && H=$(cat "$CONF")
+case "$H" in ''|*[!0-9]*) H=560 ;; esac
+
+start_hidden() {
+    wvkbd-mobintl \
+        --output "$BOTTOM" \
+        -H "$H" -L "$H" -R 10 \
+        --fn "DejaVu Sans 22" \
+        --alpha 255 \
+        --bg 141417 \
+        --fg 2c2c2e \
+        --fg-sp 3a3a3c \
+        --press 0a84ff \
+        --press-sp 0a84ff \
+        --text ffffff \
+        --text-sp 9a9aa0 \
+        --landscape-layers full,landscape,special,landscapespecial \
+        --hidden \
+        >/dev/null 2>&1 &
+    sleep 1
+}
+
+case "${1:-toggle}" in
+    --init)
+        pgrep -x wvkbd-mobintl >/dev/null 2>&1 || start_hidden
+        rm -f "$STATE"
+        ;;
+    restart)
+        pkill -x wvkbd-mobintl 2>/dev/null
+        sleep 1
+        rm -f "$STATE"
+        start_hidden
+        ;;
+    show)
+        pgrep -x wvkbd-mobintl >/dev/null 2>&1 || start_hidden
+        pkill -USR2 -x wvkbd-mobintl
+        touch "$STATE"
+        ;;
+    hide)
+        pkill -USR1 -x wvkbd-mobintl
+        rm -f "$STATE"
+        ;;
+    *)
+        if [ -f "$STATE" ]; then
+            pkill -USR1 -x wvkbd-mobintl
+            rm -f "$STATE"
+        else
+            pgrep -x wvkbd-mobintl >/dev/null 2>&1 || start_hidden
+            pkill -USR2 -x wvkbd-mobintl
+            touch "$STATE"
+        fi
+        ;;
+esac

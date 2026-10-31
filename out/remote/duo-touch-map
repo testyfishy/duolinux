@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Map the Duo Lite touchscreens to their panels.
+
+Himax         -> DSI-1 (main)
+generic ft5x06-> DP-1  (bottom)
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+
+MAIN = "DSI-1"
+BOTTOM = "DP-1"
+
+
+def inputs() -> list[dict]:
+    out = subprocess.run(["swaymsg", "-t", "get_inputs", "-r"],
+                         capture_output=True, text=True).stdout
+    try:
+        return json.loads(out)
+    except Exception:
+        return []
+
+
+def main() -> None:
+    for item in inputs():
+        if item.get("type") != "touch":
+            continue
+        ident = item.get("identifier", "")
+        target = MAIN if "Himax" in ident else BOTTOM if "ft5x06" in ident else None
+        if not target:
+            continue
+        subprocess.run(["swaymsg", "input", ident, "map_to_output", target],
+                       capture_output=True)
+        print(f"{ident} -> {target}")
+
+    print("--- result")
+    for item in inputs():
+        if item.get("type") == "touch":
+            print(f'{item["identifier"]:36s} -> {item.get("mapped_to_output")}')
+
+
+if __name__ == "__main__":
+    main()

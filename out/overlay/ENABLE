@@ -1,0 +1,6 @@
+duo-usb-gadget.service
+duo-diag.service
+qrtr-ns.service
+rmtfs.service
+tqftpserv.service
+duo-sshfix.service

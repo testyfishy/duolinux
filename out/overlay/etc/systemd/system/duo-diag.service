@@ -1,0 +1,13 @@
+[Unit]
+Description=DuoLinux hardware diagnostics to SD boot partition
+After=multi-user.target network.target duo-usb-gadget.service
+Wants=duo-usb-gadget.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 25
+ExecStart=/usr/local/bin/duo-diag
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

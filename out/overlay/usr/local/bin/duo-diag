@@ -1,0 +1,47 @@
+#!/bin/sh
+# Collect everything needed to explain: missing Wi-Fi, dark bottom screen,
+# input mapping.  Writes a plain text report onto the FAT boot partition,
+# which the PC can read without any network.
+B=/mnt/duoboot
+mkdir -p "$B"
+mount -t vfat -o rw LABEL=ROCKNIX "$B" 2>/dev/null || \
+  mount -t vfat -o rw /dev/mmcblk1p1 "$B" 2>/dev/null || true
+OUT="$B/duo-diag.txt"
+
+{
+  echo "=== duo-diag $(date)"
+  echo "--- uname"; uname -a
+  echo "--- cmdline"; cat /proc/cmdline
+  echo "--- try modprobe ath10k_snoc"
+  modprobe ath10k_snoc 2>&1; echo "rc=$?"
+  sleep 4
+  echo "--- lsmod"; lsmod 2>&1 | head -40
+  echo "--- interfaces"; ip -br addr 2>&1
+  echo "--- rfkill"; rfkill list 2>&1
+  echo "--- nmcli dev"; nmcli -t dev status 2>&1
+  echo "--- nmcli radio"; nmcli -t radio all 2>&1
+  echo "--- remoteproc"
+  for r in /sys/class/remoteproc/*; do
+    [ -e "$r" ] || continue
+    echo "$r name=$(cat "$r/name" 2>/dev/null) state=$(cat "$r/state" 2>/dev/null) fw=$(cat "$r/firmware" 2>/dev/null)"
+  done
+  echo "--- drm connectors"
+  for c in /sys/class/drm/card*-*; do
+    [ -e "$c" ] || continue
+    echo "$(basename "$c") status=$(cat "$c/status" 2>/dev/null) enabled=$(cat "$c/enabled" 2>/dev/null) modes=$(tr '\n' ',' < "$c/modes" 2>/dev/null)"
+  done
+  echo "--- sway outputs"
+  su - duo -c 'XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-1 swaymsg -t get_outputs' 2>&1 | head -80
+  echo "--- sway inputs"
+  su - duo -c 'XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-1 swaymsg -t get_inputs' 2>&1 | head -80
+  echo "--- input devices"
+  for d in /dev/input/event*; do
+    [ -e "$d" ] || continue
+    echo "$d $(cat /sys/class/input/$(basename "$d")/device/name 2>/dev/null)"
+  done
+  echo "--- dmesg"
+  dmesg 2>/dev/null | grep -i -E "ath10k|wcn|rproc|remoteproc|qmi|wlfw|dsi|panel|dpu|msm|usb" | tail -150
+} > "$OUT" 2>&1
+
+sync
+umount "$B" 2>/dev/null || true

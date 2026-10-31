@@ -1,0 +1,54 @@
+# DuoLinux Sway session
+set $mod Mod4
+
+font pango:JetBrains Mono 11
+default_border none
+default_floating_border none
+hide_edge_borders both
+gaps inner 0
+gaps outer 0
+focus_follows_mouse no
+mouse_warping output
+xwayland disable
+
+# Outputs: name, rotation, scale and position come from one place.
+exec_always /usr/local/bin/duo-display
+output * bg #101418 solid_color
+
+# Touch: both panels currently map to the main screen until the bottom one lights.
+input type:touch map_to_output DSI-1
+
+workspace 1 output DSI-1
+workspace 2 output DSI-1
+
+bar {
+    status_command i3status
+    position top
+    height 24
+    font pango:JetBrains Mono 10
+    colors {
+        statusline #c8d3e0
+        background #101418
+        focused_workspace  #1f6feb #1f6feb #ffffff
+        inactive_workspace #101418 #101418 #6b7684
+        urgent_workspace   #aa3333 #aa3333 #ffffff
+    }
+}
+
+# --- keys -------------------------------------------------------------
+bindsym $mod+Return exec foot
+bindsym F10 exec /usr/local/bin/duo-apps
+bindsym F11 exec /usr/local/bin/duo-wifi
+bindsym F12 exec /usr/local/bin/duo-settings
+bindsym F1  exec /usr/local/bin/duo-osk toggle
+bindsym $mod+Shift+q kill
+bindsym $mod+Shift+e exec swaynag -t warning -m 'Exit the session?' -B 'Yes' 'swaymsg exit'
+bindsym $mod+Shift+r reload
+
+# media / hardware keys
+bindsym XF86AudioRaiseVolume exec pactl set-sink-volume @DEFAULT_SINK@ +5%
+bindsym XF86AudioLowerVolume exec pactl set-sink-volume @DEFAULT_SINK@ -5%
+bindsym XF86AudioMute exec pactl set-sink-mute @DEFAULT_SINK@ toggle
+bindsym XF86MonBrightnessUp exec brightnessctl set +10%
+bindsym XF86MonBrightnessDown exec brightnessctl set 10%-
+bindsym XF86WLAN exec /usr/local/bin/duo-wifi

@@ -1,0 +1,13 @@
+[Unit]
+Description=DuoLinux USB network gadget (CDC-NCM)
+After=network-pre.target
+Before=NetworkManager.service
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/duo-usb-gadget
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Log raw pad events (keys and axes) from InputPlumber's virtual devices.
+
+Writes /var/log/duo-keylog.txt with timestamps so presses can be separated by
+the gaps between them.
+"""
+from __future__ import annotations
+
+import selectors
+import time
+
+import evdev
+from evdev import ecodes as e
+
+LOG = "/var/log/duo-keylog.txt"
+DEADLINE = time.time() + 420   # 7 minutes, plenty of slack
+
+
+def open_devs():
+    devs = []
+    for path in evdev.list_devices():
+        try:
+            d = evdev.InputDevice(path)
+        except Exception:  # noqa: BLE001
+            continue
+        if "InputPlumber" in d.name or "DualSense" in d.name:
+            devs.append(d)
+    return devs
+
+
+def main() -> None:
+    with open(LOG, "w") as f:
+        f.write(f"# start {time.strftime('%H:%M:%S')}\n")
+        devs = open_devs()
+        for d in devs:
+            f.write(f"# device {d.path} {d.name!r}\n")
+        f.flush()
+
+        sel = selectors.DefaultSelector()
+        for d in devs:
+            sel.register(d.fd, selectors.EVENT_READ, d)
+
+        while time.time() < DEADLINE:
+            for key, _ in sel.select(timeout=1.0):
+                dev = key.data
+                try:
+                    events = dev.read()
+                except OSError:
+                    continue
+                for ev in events:
+                    if ev.type == e.EV_KEY:
+                        name = e.bytype[e.EV_KEY].get(ev.code, str(ev.code))
+                        f.write(f"{time.time():.2f} {dev.name[:20]:20s} KEY {name} {ev.value}\n")
+                        f.flush()
+                    elif ev.type == e.EV_ABS and ev.value != 0:
+                        name = e.bytype[e.EV_ABS].get(ev.code, str(ev.code))
+                        f.write(f"{time.time():.2f} {dev.name[:20]:20s} ABS {name} {ev.value}\n")
+                        f.flush()
+        f.write("# end\n")
+
+
+if __name__ == "__main__":
+    main()

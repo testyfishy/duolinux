@@ -1,0 +1,29 @@
+#!/bin/sh
+# Settings menu.
+CHOICE=$(printf '%s\n' \
+    'Display scale' \
+    'Keyboard size' \
+    'Mouse speed' \
+    'Wi-Fi' \
+    'Terminal' \
+    'Files' \
+    'Browser' \
+    'Tailscale status' \
+    'Sound' \
+    'Power off' \
+    'Reboot' |
+    fuzzel --output DSI-1 --dmenu --lines 12 --prompt "Settings: ")
+
+case "$CHOICE" in
+    'Display scale')     exec /usr/local/bin/duo-scale ;;
+    'Keyboard size')     exec /usr/local/bin/duo-kbd-settings ;;
+    'Mouse speed')       exec /usr/local/bin/duo-mouse-settings ;;
+    'Wi-Fi')             exec /usr/local/bin/duo-wifi ;;
+    'Terminal')          exec foot ;;
+    'Files')             exec pcmanfm ;;
+    'Browser')           exec firefox-esr ;;
+    'Tailscale status')  exec foot -e tailscale status ;;
+    'Sound')             exec foot -e alsamixer ;;
+    'Power off')         exec systemctl poweroff ;;
+    'Reboot')            exec systemctl reboot ;;
+esac

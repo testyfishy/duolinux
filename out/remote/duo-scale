@@ -1,0 +1,9 @@
+#!/bin/sh
+# Pick a display scale and remember it.
+CHOICE=$(printf '1.0 (smaller, more fits)\n1.25\n1.5 (recommended)\n1.75\n2.0 (largest text)' \
+  | fuzzel --dmenu --prompt "Display scale: " | sed 's/ .*//')
+[ -z "$CHOICE" ] && exit 0
+mkdir -p "$HOME/.config/duo"
+printf '%s\n' "$CHOICE" > "$HOME/.config/duo/scale.conf"
+swaymsg output DSI-1 scale "$CHOICE" >/dev/null 2>&1
+swaymsg output DSI-1 position 0 0 >/dev/null 2>&1

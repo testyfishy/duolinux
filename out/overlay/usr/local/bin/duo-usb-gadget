@@ -1,0 +1,42 @@
+#!/bin/sh
+# Bring up a USB network adapter (CDC-NCM) so the device is reachable over the
+# cable with no Wi-Fi at all.  PC side gets 10.55.0.2/24, device is 10.55.0.1.
+set -e
+G=/sys/kernel/config/usb_gadget/duo
+
+mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
+mkdir -p /sys/kernel/config/usb_gadget
+cd /sys/kernel/config/usb_gadget
+
+[ -d "$G" ] || mkdir -p "$G"
+cd "$G"
+
+echo 0x1d6b > idVendor
+echo 0x0104 > idProduct
+echo 0x0100 > bcdDevice
+echo 0x0200 > bcdUSB
+
+mkdir -p strings/0x409
+echo "duolinux0001" > strings/0x409/serialnumber
+echo "DuoLinux" > strings/0x409/manufacturer
+echo "Duo Lite" > strings/0x409/product
+
+mkdir -p configs/c.1/strings/0x409
+echo "NCM" > configs/c.1/strings/0x409/configuration
+echo 250 > configs/c.1/MaxPower
+
+mkdir -p functions/ncm.usb0
+[ -e configs/c.1/ncm.usb0 ] || ln -s functions/ncm.usb0 configs/c.1/
+
+UDC=$(ls /sys/class/udc 2>/dev/null | head -1)
+if [ -n "$UDC" ]; then
+  echo "$UDC" > UDC
+else
+  echo "duo-usb-gadget: no UDC found" >&2
+  exit 1
+fi
+
+sleep 2
+ip link set usb0 up 2>/dev/null || true
+ip addr add 10.55.0.1/24 dev usb0 2>/dev/null || true
+ip addr show usb0 2>/dev/null

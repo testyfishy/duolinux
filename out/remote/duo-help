@@ -1,0 +1,21 @@
+#!/bin/sh
+# On-screen button guide (Select held 2 s).
+exec fuzzel --output DSI-1 --dmenu --lines 16 --width 56 --prompt "Buttons: " <<'EOF'
+SELECT (hold 2s)  This help
+SELECT + X        Wi-Fi picker
+SELECT + Y        Settings
+SELECT + L2       On-screen keyboard (bottom screen)
+SELECT + R2       Apps / launcher
+Guide             Home (unchanged)
+
+In menus and terminals:
+  d-pad           Arrow keys
+  A               Enter / confirm
+  B               Escape / back
+  X, Y            nothing (gamepad only)
+
+Mouse mode (Select + R3):
+  pointer stick   moves the cursor (set in Settings)
+  other stick     scrolls
+  L1 / R1         left click / right click
+EOF

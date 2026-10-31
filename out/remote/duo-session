@@ -1,0 +1,60 @@
+#!/bin/sh
+# Graphical session on tty1. Chooses Plasma or Sway from /etc/duo/session,
+# keeps the session alive, and falls back to Sway if Plasma dies immediately
+# (a black screen with no way to recover is the one thing we cannot have).
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+export XDG_SESSION_TYPE=wayland
+export QT_QPA_PLATFORM=wayland
+export SDL_VIDEODRIVER=wayland
+export MOZ_ENABLE_WAYLAND=1
+export WLR_NO_HARDWARE_CURSORS=1
+
+mkdir -p "$HOME/.local/state/duo"
+LOG="$HOME/.local/state/duo/session.log"
+
+# The bottom panel has no hotplug event; force it before any compositor starts.
+sudo -n /usr/local/bin/duo-bottom-detect >/dev/null 2>&1 || true
+
+SESSION=$(cat /etc/duo/session 2>/dev/null || echo plasma)
+[ -z "$SESSION" ] && SESSION=plasma
+
+start_sway() {
+    export XDG_CURRENT_DESKTOP=sway
+    export XDG_SESSION_DESKTOP=sway
+    sway --config /etc/sway/config >> "$LOG" 2>&1
+}
+
+start_plasma() {
+    export XDG_CURRENT_DESKTOP=KDE
+    export XDG_SESSION_DESKTOP=KDE
+    export KDE_FULL_SESSION=true
+    export DESKTOP_SESSION=plasma
+    startplasma-wayland >> "$LOG" 2>&1
+}
+
+while :; do
+    case "$SESSION" in
+        sway)  S=sway ;;
+        *)     S=plasma ;;
+    esac
+
+    START=$(date +%s)
+    echo "=== $(date -Is) starting $S" >> "$LOG"
+    if [ "$S" = plasma ]; then start_plasma; else start_sway; fi
+    RC=$?
+    ELAPSED=$(( $(date +%s) - START ))
+    echo "=== $(date -Is) $S exited rc=$RC after ${ELAPSED}s" >> "$LOG"
+
+    [ -f /run/duo/no-restart ] && break
+
+    # Plasma that dies within 25 s means the compositor could not start at all.
+    # Do not leave the device headless: fall back and remember the choice.
+    if [ "$S" = plasma ] && [ "$ELAPSED" -lt 25 ]; then
+        echo "=== plasma failed fast; falling back to sway" >> "$LOG"
+        sudo -n sh -c 'echo sway > /etc/duo/session'
+        SESSION=sway
+    fi
+    sleep 3
+done

@@ -1,0 +1,29 @@
+#!/bin/sh
+# Keyboard size setting. Writes the height and restarts the keyboard.
+CONF="$HOME/.config/duo/kbd-height"
+mkdir -p "$HOME/.config/duo"
+
+CURRENT=560
+[ -f "$CONF" ] && CURRENT=$(cat "$CONF")
+
+CHOICE=$(printf '%s\n' \
+    "Small   (420 px)" \
+    "Medium  (560 px)  [current: ${CURRENT}px]" \
+    "Large   (700 px)" \
+    "Full    (960 px - whole bottom screen)" |
+    fuzzel --output DSI-1 --dmenu --lines 6 --prompt "Keyboard size: ")
+[ -z "$CHOICE" ] && exit 0
+
+case "$CHOICE" in
+    Small*)  H=420 ;;
+    Medium*) H=560 ;;
+    Large*)  H=700 ;;
+    Full*)   H=960 ;;
+    *)       exit 0 ;;
+esac
+
+printf '%s\n' "$H" > "$CONF"
+/usr/local/bin/duo-osk restart >/dev/null 2>&1
+
+printf 'Keyboard height set to %s px\nOK\n' "$H" |
+    fuzzel --output DSI-1 --dmenu --lines 4 --prompt "Keyboard: " >/dev/null
