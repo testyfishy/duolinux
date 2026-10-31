@@ -1,0 +1,26 @@
+#!/bin/sh
+# Fan profile setting. Quiet is the default on this device: the SoC only starts
+# throttling at 95 C, so there is no reason to make noise before ~72 C.
+STATE=/etc/duo/fan-profile
+mkdir -p /etc/duo
+CUR=$(cat "$STATE" 2>/dev/null || echo quiet)
+
+CHOICE=$(printf '%s\n' \
+    "Quiet        - off until 72C, max 43%   [current: $CUR]" \
+    "Balanced     - starts at 62C, max 75%" \
+    "Performance  - starts at 55C, full range" |
+    fuzzel --output DSI-1 --dmenu --lines 6 --prompt "Fan profile: ")
+[ -z "$CHOICE" ] && exit 0
+
+case "$CHOICE" in
+    Quiet*)       P=quiet ;;
+    Balanced*)    P=balanced ;;
+    Performance*) P=performance ;;
+    *)            exit 0 ;;
+esac
+
+printf '%s\n' "$P" > "$STATE"
+systemctl restart duo-fan
+
+printf 'Fan profile: %s\nOK\n' "$P" |
+    fuzzel --output DSI-1 --dmenu --lines 4 --prompt "Fan: " >/dev/null
