@@ -1,0 +1,30 @@
+#!/bin/sh
+# Mouse speed for both pointer profiles.
+CHOICE=$(printf '%s\n' 'Slow (500)' 'Normal (900)' 'Fast (1400)' 'Very fast (2000)' |
+         fuzzel --output DSI-1 --dmenu --lines 6 --prompt "Mouse speed: ")
+[ -z "$CHOICE" ] && exit 0
+
+case "$CHOICE" in
+    Slow*)       S=500 ;;
+    Normal*)     S=900 ;;
+    Fast*)       S=1400 ;;
+    "Very fast"*) S=2000 ;;
+    *)           exit 0 ;;
+esac
+
+sed -i "s/speed_pps: [0-9]*/speed_pps: $S/" \
+    /etc/inputplumber/profiles/mouse-left.yaml \
+    /etc/inputplumber/profiles/mouse-right.yaml 2>/dev/null
+
+# If mouse mode is on, reload the active profile so the new speed applies.
+CFG="$HOME/.config/duo"
+STICK=right
+[ -f "$CFG/mouse-stick" ] && STICK=$(cat "$CFG/mouse-stick")
+if [ -f "/run/user/$(id -u)/duo-mouse.on" ]; then
+    busctl call org.shadowblip.InputPlumber /org/shadowblip/InputPlumber/CompositeDevice0 \
+        org.shadowblip.Input.CompositeDevice LoadProfilePath s \
+        "/etc/inputplumber/profiles/mouse-$STICK.yaml" >/dev/null 2>&1 || true
+fi
+
+printf 'Mouse speed %s\nOK\n' "$S" |
+    fuzzel --output DSI-1 --dmenu --lines 4 --prompt "Mouse: " >/dev/null

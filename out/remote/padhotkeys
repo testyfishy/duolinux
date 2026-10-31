@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""Pad hotkeys for the Duo Lite.
+
+    Select held 2s -> button guide
+    Select + X     -> Wi-Fi picker
+    Select + Y     -> settings
+    Select + L2    -> on-screen keyboard (bottom screen)
+    Select + R2    -> apps / launcher
+
+L1/R1 are left/right click in mouse mode, so the old L1/R1 hotkeys moved to the
+analog triggers L2/R2.  The virtual DualSense is only read, never grabbed.
+"""
+from __future__ import annotations
+
+import glob
+import select
+import subprocess
+import time
+
+import evdev
+from evdev import ecodes as e
+
+HOLD_SECONDS = 2.0
+LOG = "/var/log/duo-hotkeys.log"
+TRIGGER_THRESHOLD = 128
+
+ACTIONS = {
+    "apps": "/usr/local/bin/duo-apps",
+    "osk": "/usr/local/bin/duo-osk",
+    "wifi": "/usr/local/bin/duo-wifi",
+    "settings": "/usr/local/bin/duo-settings",
+    "help": "/usr/local/bin/duo-help",
+    "mouse": "/usr/local/bin/duo-mouse-toggle",
+}
+
+COMBOS = {
+    e.BTN_NORTH: "wifi",        # X
+    e.BTN_WEST: "settings",     # Y
+}
+
+TRIGGERS = {
+    e.ABS_Z: "osk",             # L2
+    e.ABS_RZ: "apps",           # R2
+}
+
+
+def log(msg: str) -> None:
+    try:
+        with open(LOG, "a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+    except OSError:
+        pass
+
+
+def duo_env_prefix() -> str:
+    socks = glob.glob("/run/user/1000/sway-ipc.*.sock")
+    sock = socks[0] if socks else ""
+    return (f"SWAYSOCK={sock} XDG_RUNTIME_DIR=/run/user/1000 "
+            f"WAYLAND_DISPLAY=wayland-1 HOME=/home/duo")
+
+
+def run_action(name: str) -> None:
+    path = ACTIONS.get(name)
+    if not path:
+        return
+    log(f"ACTION {name}")
+    subprocess.Popen(["su", "-", "duo", "-c", f"{duo_env_prefix()} {path}"])
+
+
+def find_pad():
+    for path in evdev.list_devices():
+        try:
+            dev = evdev.InputDevice(path)
+        except Exception:  # noqa: BLE001
+            continue
+        keys = dev.capabilities().get(e.EV_KEY, [])
+        if "DualSense" in dev.name and e.BTN_SELECT in keys and e.BTN_SOUTH in keys:
+            return dev
+    return None
+
+
+def main() -> None:
+    log("=== daemon start")
+    while True:
+        dev = find_pad()
+        if dev is None:
+            time.sleep(1)
+            continue
+        log(f"using {dev.path} {dev.name}")
+
+        held = False
+        held_since = 0.0
+        fired = False
+        trigger_state = {e.ABS_Z: False, e.ABS_RZ: False}
+
+        try:
+            while True:
+                ready, _, _ = select.select([dev.fd], [], [], 0.2)
+                if ready:
+                    for ev in dev.read():
+                        if ev.type == e.EV_KEY:
+                            if ev.code == e.BTN_SELECT:
+                                if ev.value == 1:
+                                    held = True
+                                    fired = False
+                                    held_since = time.monotonic()
+                                    log("SELECT down")
+                                elif ev.value == 0:
+                                    held = False
+                                    log("SELECT up")
+                                continue
+
+                            if not (held and ev.value == 1):
+                                continue
+                            fired = True
+                            name = e.bytype[e.EV_KEY].get(ev.code, str(ev.code))
+                            log(f"COMBO {name}")
+                            if ev.code in COMBOS:
+                                run_action(COMBOS[ev.code])
+
+                        elif ev.type == e.EV_ABS and ev.code in TRIGGERS:
+                            pressed = ev.value >= TRIGGER_THRESHOLD
+                            if pressed and not trigger_state.get(ev.code):
+                                trigger_state[ev.code] = True
+                                if held:
+                                    fired = True
+                                    log(f"COMBO trigger {ev.code}")
+                                    run_action(TRIGGERS[ev.code])
+                            elif not pressed:
+                                trigger_state[ev.code] = False
+
+                if held and not fired and time.monotonic() - held_since >= HOLD_SECONDS:
+                    fired = True
+                    log("HOLD -> help")
+                    run_action("help")
+        except OSError:
+            log("device lost, rescanning")
+            time.sleep(1)
+
+
+if __name__ == "__main__":
+    main()

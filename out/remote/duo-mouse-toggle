@@ -1,0 +1,15 @@
+#!/bin/sh
+# Toggle mouse mode (used by the Settings menu). Persists the choice.
+STATE=/etc/duo/mouse-mode
+mkdir -p /etc/duo
+CUR=$(cat "$STATE" 2>/dev/null || echo on)
+
+if [ "$CUR" = "on" ]; then
+    printf 'off\n' > "$STATE"
+else
+    printf 'on\n' > "$STATE"
+fi
+
+/usr/local/bin/duo-mouse-apply
+printf 'Mouse mode %s\nOK\n' "$(cat "$STATE")" |
+    fuzzel --output DSI-1 --dmenu --lines 4 --prompt "Mouse: " >/dev/null

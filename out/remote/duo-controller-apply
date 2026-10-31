@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Apply Duo controller bindings to InputPlumber.
+
+Three things this must get right, each learned the hard way:
+  * InputPlumber button names are camelCase (DPadUp, LeftBumper), not "DPad Up".
+  * InputPlumber profiles REPLACE each other, so the same bindings have to exist
+    in the gamepad profile and in both mouse profiles (pointer/scroll entries in
+    those are preserved here).
+  * Restarting InputPlumber drops the active profile, so mouse mode has to be
+    re-applied afterwards or the pointer stops working.
+"""
+from __future__ import annotations
+
+import json
+import pathlib
+import subprocess
+import sys
+import time
+
+try:
+    import yaml
+except ImportError:
+    sys.exit("python3-yaml is required")
+
+CONFIG = pathlib.Path("/etc/duo/controller.json")
+GAMEPAD = pathlib.Path("/etc/inputplumber/profiles/gamepad.yaml")
+MOUSE = [pathlib.Path("/etc/inputplumber/profiles/mouse-left.yaml"),
+         pathlib.Path("/etc/inputplumber/profiles/mouse-right.yaml")]
+
+# id -> (source event, pass-through gamepad target or None)
+BUTTONS: dict[str, tuple[dict, dict | None]] = {
+    "dpad_up": ({"button": "DPadUp"}, {"button": "DPadUp"}),
+    "dpad_down": ({"button": "DPadDown"}, {"button": "DPadDown"}),
+    "dpad_left": ({"button": "DPadLeft"}, {"button": "DPadLeft"}),
+    "dpad_right": ({"button": "DPadRight"}, {"button": "DPadRight"}),
+    "a": ({"button": "East"}, {"button": "East"}),
+    "b": ({"button": "South"}, {"button": "South"}),
+    "x": ({"button": "North"}, {"button": "North"}),
+    "y": ({"button": "West"}, {"button": "West"}),
+    "l1": ({"button": "LeftBumper"}, {"button": "LeftBumper"}),
+    "r1": ({"button": "RightBumper"}, {"button": "RightBumper"}),
+    "l2": ({"trigger": {"name": "LeftTrigger", "deadzone": 0.3}},
+           {"trigger": {"name": "LeftTrigger"}}),
+    "r2": ({"trigger": {"name": "RightTrigger", "deadzone": 0.3}},
+           {"trigger": {"name": "RightTrigger"}}),
+    "l3": ({"button": "LeftStick"}, {"button": "LeftStick"}),
+    "r3": ({"button": "RightStick"}, {"button": "RightStick"}),
+    "select": ({"button": "Select"}, {"button": "Select"}),
+    "start": ({"button": "Start"}, {"button": "Start"}),
+}
+
+ACTIONS: dict[str, dict | None] = {
+    "none": None,
+    "esc": {"keyboard": "KeyEsc"},
+    "enter": {"keyboard": "KeyEnter"},
+    "space": {"keyboard": "KeySpace"},
+    "tab": {"keyboard": "KeyTab"},
+    "menu": {"keyboard": "KeyCompose"},
+    "up": {"keyboard": "KeyUp"},
+    "down": {"keyboard": "KeyDown"},
+    "left": {"keyboard": "KeyLeft"},
+    "right": {"keyboard": "KeyRight"},
+    "click": {"mouse": {"button": "Left"}},
+    "right_click": {"mouse": {"button": "Right"}},
+    "scroll_up": {"mouse": {"button": "WheelUp"}},
+    "scroll_down": {"mouse": {"button": "WheelDown"}},
+}
+
+MANAGED_BUTTONS = {name["button"] for name, _ in BUTTONS.values() if "button" in name}
+MANAGED_TRIGGERS = {name["trigger"]["name"] for name, _ in BUTTONS.values()
+                    if "trigger" in name}
+
+
+def is_managed(entry: dict) -> bool:
+    # Old wheel attempts never worked (InputPlumber has no wheel target); drop
+    # them wherever they were left behind.
+    if str(entry.get("name", "")).startswith(("Right stick scroll", "Duo right stick")):
+        return True
+    gamepad = (entry.get("source_event") or {}).get("gamepad") or {}
+    if gamepad.get("button") in MANAGED_BUTTONS:
+        return True
+    trigger = gamepad.get("trigger") or {}
+    return trigger.get("name") in MANAGED_TRIGGERS
+
+
+# Right stick scrolling. InputPlumber profiles cannot emit mouse wheel events,
+# so the stick drives Page Up / Page Down instead, which most scrollable views
+# honour. This is a fixed entry rather than a user binding because the
+# Controller page lists buttons, not axes.
+AXIS_SCROLL = [
+    ("scroll up", "up", "KeyPageUp"),
+    ("scroll down", "down", "KeyPageDown"),
+]
+
+
+def build_entries(bindings: dict[str, str], with_passthrough: bool) -> list[dict]:
+    entries = []
+    for button_id, action in bindings.items():
+        if button_id not in BUTTONS:
+            continue          # e.g. "home", handled by the key daemon
+        source, passthrough = BUTTONS[button_id]
+        target = ACTIONS.get(action)
+        # "none" means leave the button alone. Analog triggers have no desktop
+        # use, so an unassigned trigger is dropped entirely rather than being
+        # passed through, which is what the user asked for.
+        if target is None and "trigger" in source:
+            continue
+        targets = []
+        if with_passthrough and passthrough:
+            targets.append({"gamepad": passthrough})
+        if target:
+            targets.append(target)
+        if not targets:
+            continue
+        entries.append({
+            "name": f"Duo {button_id}",
+            "source_event": {"gamepad": source},
+            "target_events": targets,
+        })
+    return entries
+
+
+def uses_wheel(entry: dict) -> bool:
+    for target in entry.get("target_events", []) or []:
+        mouse = target.get("mouse") or {}
+        if str(mouse.get("button", "")).startswith("Wheel"):
+            return True
+    return False
+
+
+def rewrite(path: pathlib.Path, bindings: dict[str, str], with_passthrough: bool) -> int:
+    doc = yaml.safe_load(path.read_text())
+    mapping = [m for m in doc.get("mapping", [])
+               if not is_managed(m) and not uses_wheel(m)]
+    mapping.extend(build_entries(bindings, with_passthrough))
+    doc["mapping"] = mapping
+    path.write_text(yaml.safe_dump(doc, sort_keys=False))
+    return len(mapping)
+
+
+def main() -> int:
+    bindings = json.loads(CONFIG.read_text()) if CONFIG.exists() else {}
+
+    total = rewrite(GAMEPAD, bindings, with_passthrough=True)
+    for path in MOUSE:
+        if path.exists():
+            total += rewrite(path, bindings, with_passthrough=False)
+    print(f"rewrote {total} mappings across the profiles")
+
+    subprocess.run(["systemctl", "restart", "inputplumber"], check=False)
+
+    # InputPlumber comes back on the default profile; restore the saved mode.
+    time.sleep(3)
+    subprocess.run(["/usr/local/bin/duo-mouse-apply"], check=False)
+    print("mouse mode re-applied")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

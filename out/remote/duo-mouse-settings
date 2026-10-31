@@ -1,0 +1,37 @@
+#!/bin/sh
+# Mouse mode: which stick points, how fast, and on/off.
+CFG="$HOME/.config/duo"
+mkdir -p "$CFG"
+STICKFILE="$CFG/mouse-stick"
+[ -f "$STICKFILE" ] || printf 'right\n' > "$STICKFILE"
+STICK=$(cat "$STICKFILE")
+
+IP_CALL="busctl call org.shadowblip.InputPlumber /org/shadowblip/InputPlumber/CompositeDevice0 org.shadowblip.Input.CompositeDevice LoadProfilePath s"
+
+CHOICE=$(printf '%s\n' \
+    "Pointer: ${STICK} stick   (change)" \
+    "Mouse speed" \
+    "Toggle mouse mode now" |
+    fuzzel --output DSI-1 --dmenu --lines 6 --prompt "Mouse: ")
+[ -z "$CHOICE" ] && exit 0
+
+case "$CHOICE" in
+    "Pointer:"*)
+        NEW=$(printf 'Left stick\nRight stick\n' |
+              fuzzel --output DSI-1 --dmenu --lines 4 --prompt "Pointer stick: ")
+        case "$NEW" in
+            Left*)  printf 'left\n'  > "$STICKFILE"; STICK=left ;;
+            Right*) printf 'right\n' > "$STICKFILE"; STICK=right ;;
+            *) exit 0 ;;
+        esac
+        $IP_CALL "/etc/inputplumber/profiles/mouse-$STICK.yaml" >/dev/null 2>&1 || true
+        printf 'Pointer is now the %s stick\nOK\n' "$STICK" |
+            fuzzel --output DSI-1 --dmenu --lines 4 --prompt "Mouse: " >/dev/null
+        ;;
+    "Mouse speed")
+        exec /usr/local/bin/duo-mouse-speed
+        ;;
+    "Toggle mouse mode now")
+        /usr/local/bin/duo-mouse-toggle
+        ;;
+esac

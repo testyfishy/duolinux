@@ -1,0 +1,33 @@
+#!/bin/sh
+# Apply the saved mouse-mode setting (used at boot and by the Settings toggle).
+STATE=/etc/duo/mouse-mode
+STICKFILE=/home/duo/.config/duo/mouse-stick
+
+MODE=$(cat "$STATE" 2>/dev/null || echo on)
+STICK=right
+[ -f "$STICKFILE" ] && STICK=$(cat "$STICKFILE")
+case "$STICK" in left|right) ;; *) STICK=right ;; esac
+
+if [ "$MODE" = "on" ]; then
+    PROFILE="/etc/inputplumber/profiles/mouse-$STICK.yaml"
+else
+    PROFILE="/etc/inputplumber/profiles/gamepad.yaml"
+fi
+
+# Wait for InputPlumber's composite device to exist.
+i=0
+while [ $i -lt 20 ]; do
+    busctl tree org.shadowblip.InputPlumber 2>/dev/null | grep -q CompositeDevice0 && break
+    i=$((i+1))
+    sleep 1
+done
+
+busctl call org.shadowblip.InputPlumber \
+    /org/shadowblip/InputPlumber/CompositeDevice0 \
+    org.shadowblip.Input.CompositeDevice LoadProfilePath s "$PROFILE" >/dev/null 2>&1 || true
+
+if [ "$MODE" = "on" ]; then
+    touch /run/user/1000/duo-mouse.on 2>/dev/null || true
+else
+    rm -f /run/user/1000/duo-mouse.on 2>/dev/null || true
+fi

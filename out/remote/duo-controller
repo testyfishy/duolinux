@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""Duo Controller settings.
+
+Shows what every physical button sends, and lets each one be reassigned without
+a keyboard: pick a row, press "Change", then choose the action from a list.
+
+The bindings are the source of truth in /etc/duo/controller.json; applying them
+regenerates the InputPlumber device profile (never editing the shipped
+ROCKNIX files) and restarts the service.
+"""
+from __future__ import annotations
+
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk  # noqa: E402
+
+CONFIG = pathlib.Path("/etc/duo/controller.json")
+SCROLL_FILE = pathlib.Path("/etc/duo/scroll-direction")
+PROFILE = pathlib.Path("/etc/inputplumber/profiles/gamepad.yaml")
+
+# action id -> (label, keyboard target or None)
+ACTIONS: dict[str, tuple[str, str | None]] = {
+    "none": ("Nothing (pass through to games only)", None),
+    "esc": ("Escape - go back", "KeyEsc"),
+    "enter": ("Enter - confirm", "KeyEnter"),
+    "space": ("Space - press the focused button", "KeySpace"),
+    "tab": ("Tab - next control", "KeyTab"),
+    "menu": ("Menu - open context menu", "KeyMenu"),
+    "up": ("Arrow up", "KeyUp"),
+    "down": ("Arrow down", "KeyDown"),
+    "left": ("Arrow left", "KeyLeft"),
+    "right": ("Arrow right", "KeyRight"),
+    "click": ("Mouse left click (from the mouse profile)", None),
+    "right_click": ("Mouse right click (from the mouse profile)", None),
+    "scroll_up": ("Scroll up (mouse wheel)", None),
+    "scroll_down": ("Scroll down (mouse wheel)", None),
+}
+
+# The Home button arrives as a plain KEY_HOME, not a gamepad button, so it is
+# handled by the key daemon rather than by an InputPlumber profile.
+HOME_ACTIONS = {
+    "launcher": "Open the application launcher (Super)",
+    "keyboard": "Show or hide the on-screen keyboard",
+    "none": "Nothing (leave it to applications)",
+}
+
+# button id -> (label, InputPlumber button name)
+BUTTONS: dict[str, tuple[str, str]] = {
+    "dpad_up": ("D-pad up", "DPad Up"),
+    "dpad_down": ("D-pad down", "DPad Down"),
+    "dpad_left": ("D-pad left", "DPad Left"),
+    "dpad_right": ("D-pad right", "DPad Right"),
+    "a": ("A (east)", "East"),
+    "b": ("B (south)", "South"),
+    "x": ("X (north)", "North"),
+    "y": ("Y (west)", "West"),
+    "l1": ("L1", "LeftBumper"),
+    "r1": ("R1", "RightBumper"),
+    "l2": ("L2 (analog)", "LeftTrigger"),
+    "r2": ("R2 (analog)", "RightTrigger"),
+    "l3": ("L3 (left stick click)", "LeftStick"),
+    "r3": ("R3 (right stick click)", "RightStick"),
+    "select": ("Select", "Select"),
+    "start": ("Start", "Start"),
+    "home": ("Home button", "KEY_HOME"),
+}
+
+DEFAULTS = {
+    "dpad_up": "up", "dpad_down": "down",
+    "dpad_left": "left", "dpad_right": "right",
+    "a": "enter", "b": "esc", "x": "space", "y": "menu",
+    "l1": "click", "r1": "right_click",
+    "l2": "scroll_up", "r2": "scroll_down",
+    "l3": "none", "r3": "none",
+    "select": "none", "start": "none",
+    "home": "launcher",
+}
+
+
+def load() -> dict[str, str]:
+    if CONFIG.exists():
+        try:
+            return {**DEFAULTS, **json.loads(CONFIG.read_text())}
+        except (OSError, json.JSONDecodeError):
+            pass
+    return dict(DEFAULTS)
+
+
+def save(bindings: dict[str, str]) -> None:
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG.write_text(json.dumps(bindings, indent=2, sort_keys=True) + "\n")
+    subprocess.run([sys.executable, "/usr/local/bin/duo-controller-apply"],
+                   check=False)
+
+
+class Window(Gtk.Window):
+    def __init__(self) -> None:
+        super().__init__(title="Controller")
+        self.set_default_size(760, 620)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.bindings = load()
+
+        header = Gtk.HeaderBar()
+        header.set_show_close_button(True)
+        header.set_title("Duo Controller")
+        self.set_titlebar(header)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        outer.set_border_width(12)
+        self.add(outer)
+
+        hint = Gtk.Label(
+            label="Choose a row, then pick what that button should do. "
+                  "Games always receive the original button as well.")
+        hint.set_xalign(0)
+        hint.set_line_wrap(True)
+        outer.pack_start(hint, False, False, 0)
+
+        self.natural = Gtk.CheckButton(
+            label="Right stick: natural scrolling (stick up scrolls up)")
+        try:
+            current = SCROLL_FILE.read_text().strip().lower()
+        except OSError:
+            current = "natural"
+        self.natural.set_active(current != "standard")
+        self.natural.connect("toggled", self.on_natural_toggled)
+        outer.pack_start(self.natural, False, False, 0)
+
+        store = Gtk.ListStore(str, str, str, str)
+        self.store = store
+        for button, (label, _name) in BUTTONS.items():
+            action = self.bindings.get(button, "none")
+            store.append([button, label, self.action_label(button, action), action])
+
+        view = Gtk.TreeView(model=store)
+        for index, title in enumerate(["Button", "Sends"]):
+            renderer = Gtk.CellRendererText()
+            column = Gtk.TreeViewColumn(title, renderer, text=index + 1)
+            column.set_expand(index == 1)
+            view.append_column(column)
+        view.set_headers_visible(True)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.add(view)
+        outer.pack_start(scroll, True, True, 0)
+
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        outer.pack_start(buttons, False, False, 0)
+
+        change = Gtk.Button(label="Change action…")
+        change.connect("clicked", self.on_change, view)
+        buttons.pack_start(change, False, False, 0)
+
+        reset = Gtk.Button(label="Restore defaults")
+        reset.connect("clicked", self.on_reset)
+        buttons.pack_end(reset, False, False, 0)
+
+        self.status = Gtk.Label(label="")
+        self.status.set_xalign(0)
+        outer.pack_end(self.status, False, False, 0)
+
+        self.show_all()
+
+    def on_natural_toggled(self, widget) -> None:
+        value = "natural" if widget.get_active() else "standard"
+        subprocess.run(["sudo", "-n", "sh", "-c",
+                        f"printf '%s\\n' {value} > {SCROLL_FILE}"], check=False)
+        self.status.set_text("Right stick: " + (
+            "up scrolls up" if widget.get_active() else "inverted"))
+
+    @staticmethod
+    def action_label(button: str, action: str) -> str:
+        if button == "home":
+            return HOME_ACTIONS.get(action, "?")
+        entry = ACTIONS.get(action)
+        return entry[0] if entry else "?"
+
+    def selected_button(self, view: Gtk.TreeView) -> str | None:
+        model, treeiter = view.get_selection().get_selected()
+        if treeiter is None:
+            return None
+        return model[treeiter][0]
+
+    def on_change(self, _widget, view: Gtk.TreeView) -> None:
+        button = self.selected_button(view)
+        if button is None:
+            self.status.set_text("Select a row first.")
+            return
+
+        dialog = Gtk.Dialog(title=f"{BUTTONS[button][0]} sends…",
+                           transient_for=self, modal=True)
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Apply", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        dialog.set_default_size(460, 480)
+        box = dialog.get_content_area()
+        box.set_spacing(4)
+
+        current = self.bindings.get(button, "none")
+        group = None
+        radio = {}
+        if button == "home":
+            choices = {key: (label, None) for key, label in HOME_ACTIONS.items()}
+        else:
+            choices = ACTIONS
+        for action, value in choices.items():
+            label = value if isinstance(value, str) else value[0]
+            radio[action] = Gtk.RadioButton.new_with_label_from_widget(
+                group, label)
+            group = group or radio[action]
+            radio[action].set_active(action == current)
+            box.pack_start(radio[action], False, False, 0)
+        box.show_all()
+
+        response = dialog.run()
+        chosen = next((a for a, r in radio.items() if r.get_active()), current)
+        dialog.destroy()
+        if response != Gtk.ResponseType.OK:
+            return
+
+        self.bindings[button] = chosen
+        for row in self.store:
+            if row[0] == button:
+                row[2] = self.action_label(button, chosen)
+                row[3] = chosen
+        save(self.bindings)
+        self.status.set_text(
+            f"Saved: {BUTTONS[button][0]} -> {self.action_label(button, chosen)}")
+
+    def on_reset(self, _widget) -> None:
+        self.bindings = dict(DEFAULTS)
+        for row in self.store:
+            action = DEFAULTS.get(row[0], "none")
+            row[2] = self.action_label(row[0], action)
+            row[3] = action
+        save(self.bindings)
+        self.status.set_text("Restored defaults.")
+
+
+def main() -> int:
+    if os.geteuid() == 0:
+        print("Run as the desktop user, not root.", file=sys.stderr)
+        return 1
+    win = Window()
+    win.connect("destroy", Gtk.main_quit)
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
