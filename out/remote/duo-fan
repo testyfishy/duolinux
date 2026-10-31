@@ -40,9 +40,9 @@ BASE = [(50, 0), (55, 45), (60, 80), (65, 110), (70, 140),
 # cap:   highest pwm the profile may use (audible limit)
 # minpwm/ minstop / minstart: fancontrol semantics, tuned for this small fan
 PROFILES = {
-    "quiet": dict(offset=+14, cap=110, start=72, stop=62,
-                  minpwm=45, minstop=40, minstart=130,
-                  step_up=5, step_down=4),
+    "quiet": dict(offset=+18, cap=100, start=78, stop=70,
+                  minpwm=32, minstop=30, minstart=110,
+                  step_up=4, step_down=3),
     "balanced": dict(offset=+4, cap=190, start=62, stop=52,
                      minpwm=55, minstop=40, minstart=200,
                      step_up=8, step_down=5),
@@ -81,8 +81,21 @@ def find_fan() -> pathlib.Path | None:
 
 
 def hottest() -> int:
+    """Hottest SoC zone only.
+
+    The charger (pmi632) and battery zones are deliberately excluded: they get
+    hot while charging and would spin the fan for the power supply rather than
+    for the SoC, which is exactly the kind of noise this profile exists to avoid.
+    """
     best = 0
     for zone in glob.glob("/sys/class/thermal/thermal_zone*"):
+        try:
+            name = pathlib.Path(zone, "type").read_text().strip()
+        except OSError:
+            continue
+        if not (name.startswith("cpuss") or name.startswith("cpu-")
+                or name.startswith("gpu") or name.startswith("pm6125")):
+            continue
         try:
             best = max(best, int(pathlib.Path(zone, "temp").read_text().strip()))
         except (OSError, ValueError):
