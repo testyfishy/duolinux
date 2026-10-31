@@ -1,0 +1,14 @@
+[Unit]
+Description=DuoLinux first boot setup
+After=local-fs.target
+Before=graphical.target
+ConditionPathExists=!/var/lib/duo/firstboot.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/duo-firstboot
+RemainAfterExit=yes
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

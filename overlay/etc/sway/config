@@ -1,0 +1,47 @@
+# DuoLinux sway session
+set $mod Mod4
+
+font pango:JetBrains Mono 10
+default_border none
+default_floating_border none
+hide_edge_borders both
+gaps inner 0
+gaps outer 0
+focus_follows_mouse no
+mouse_warping output
+
+# Two panels, two workspaces, two halves of the cockpit.
+exec /usr/local/bin/duo-layout
+exec swaybg -c '#0b0f14'
+
+for_window [app_id="duo-top"] border none
+for_window [app_id="duo-top"] move container to workspace 1
+for_window [app_id="duo-bottom"] border none
+for_window [app_id="duo-bottom"] move container to workspace 2
+for_window [app_id="duo-term"] border none
+for_window [app_id="duo-term"] move container to workspace 2
+
+# Keys that exist on the device and on a USB keyboard.
+bindsym $mod+Return exec /usr/local/bin/duo-term
+bindsym $mod+Shift+q kill
+bindsym $mod+Shift+e exec swaynag -t warning -m 'Exit the session?' -B 'Yes' 'swaymsg exit'
+bindsym F10 exec /usr/local/bin/duo-launcher-focus
+bindsym F11 exec /usr/local/bin/duo-osk
+bindsym F12 exec swaymsg workspace 1
+bindsym $mod+r exec /usr/local/bin/duo-layout
+
+# Media / hardware keys.
+bindsym XF86AudioRaiseVolume exec pactl set-sink-volume @DEFAULT_SINK@ +5%
+bindsym XF86AudioLowerVolume exec pactl set-sink-volume @DEFAULT_SINK@ -5%
+bindsym XF86AudioMute exec pactl set-sink-mute @DEFAULT_SINK@ toggle
+bindsym XF86MonBrightnessUp exec brightnessctl set +10%
+bindsym XF86MonBrightnessDown exec brightnessctl set 10%-
+bindsym XF86WLAN exec nmcli radio wifi toggle
+
+# Touch panels. Names are filled in by duo-layout when it can identify them;
+# uncomment and adjust if a panel responds on the wrong screen.
+# input "fts_ts" map_to_output DSI-1
+# input "fts_ts_secondary" map_to_output DSI-2
+
+# Sway needs the pointer to feel like a trackpad on a small screen.
+input type:pointer accel_profile adaptive

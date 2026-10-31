@@ -1,0 +1,25 @@
+#!/bin/sh
+# Small wrapper around tailscale with wording that fits the device.
+case "${1:-status}" in
+  status)
+    if command -v tailscale >/dev/null 2>&1; then
+      tailscale status || true
+      echo
+      tailscale netcheck 2>/dev/null | head -20 || true
+    else
+      echo "tailscale is not installed"
+    fi
+    ;;
+  login|up)
+    shift || true
+    echo "A URL will appear below. Open it on your phone or laptop."
+    echo
+    sudo tailscale up --ssh --accept-routes "$@" || true
+    ;;
+  logout|down)
+    sudo tailscale logout || true
+    ;;
+  *)
+    echo "usage: duo-tailscale [status|login|logout]"
+    ;;
+esac

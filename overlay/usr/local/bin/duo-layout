@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""Detect the two panels, place them, and launch the two halves of the UI."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import time
+from pathlib import Path
+
+STATE = Path("/run/duo/layout.json")
+TOP_W, TOP_H = 1920, 1080
+BOT_W, BOT_H = 1280, 960
+
+
+def swaymsg(*args: str, timeout: float = 3.0) -> str:
+    try:
+        p = subprocess.run(["swaymsg", *args], capture_output=True, text=True, timeout=timeout)
+        return (p.stdout or "") + (p.stderr or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def outputs() -> list[dict]:
+    for _ in range(60):
+        raw = swaymsg("-t", "get_outputs", "-r")
+        try:
+            data = json.loads(raw)
+            if data:
+                return data
+        except json.JSONDecodeError:
+            pass
+        time.sleep(0.25)
+    return []
+
+
+def score_mode(m: dict, w: int, h: int) -> tuple[int, int]:
+    mw, mh = m.get("width", 0), m.get("height", 0)
+    exact = 0 if (mw == w and mh == h) or (mw == h and mh == w) else 1
+    return (exact, -(mw * mh))
+
+
+def pick_mode(o: dict, w: int, h: int) -> dict:
+    modes = o.get("modes") or []
+    if not modes:
+        return o.get("current_mode") or {"width": w, "height": h, "refresh": 60000}
+    return sorted(modes, key=lambda m: score_mode(m, w, h))[0]
+
+
+def main() -> int:
+    outs = [o for o in outputs() if o.get("active", True)]
+    if not outs:
+        print("duo-layout: no outputs", flush=True)
+        return 1
+    outs.sort(key=lambda o: -(o.get("rect", {}).get("width", 0) * o.get("rect", {}).get("height", 0)))
+
+    def is_top(o: dict) -> bool:
+        name = o.get("name", "")
+        if "DSI-1" in name:
+            return True
+        if "DSI-2" in name:
+            return False
+        for m in o.get("modes") or []:
+            if (m.get("width"), m.get("height")) in ((1920, 1080), (1080, 1920)):
+                return True
+        return False
+
+    if len(outs) == 1:
+        top = bot = outs[0]
+    else:
+        top = next((o for o in outs if is_top(o)), outs[0])
+        bot = next((o for o in outs if o is not top), outs[1] if len(outs) > 1 else outs[0])
+
+    def configure(o: dict, w: int, h: int, y: int, name: str) -> int:
+        m = pick_mode(o, w, h)
+        mw, mh, hz = m["width"], m["height"], max(1, m.get("refresh", 60000) // 1000)
+        portrait = mh > mw
+        transform = 270 if (portrait and name == "top") else 0
+        # After a 90/270 rotation the logical width/height swap.
+        lw, lh = (mh, mw) if transform in (90, 270) else (mw, mh)
+        cmds = [
+            f"output {o['name']} mode {mw}x{mh}@{hz}Hz position 0,{y} transform {transform} scale 1",
+            f"output {o['name']} mode {mw}x{mh} position 0,{y} transform {transform} scale 1",
+        ]
+        for c in cmds:
+            swaymsg(c)
+        return lh
+
+    top_h = configure(top, TOP_W, TOP_H, 0, "top")
+    if bot is not top:
+        configure(bot, BOT_W, BOT_H, top_h, "bottom")
+
+    # Bind one workspace to each screen.
+    for ws, out in ((1, top), (2, bot)):
+        swaymsg(f"workspace {ws}")
+        swaymsg(f"move workspace to output {out['name']}")
+    swaymsg("workspace 1")
+
+    # Map each touch panel to the screen it physically belongs to.
+    try:
+        inputs = json.loads(swaymsg("-t", "get_inputs", "-r"))
+    except json.JSONDecodeError:
+        inputs = []
+    for i in inputs:
+        if i.get("type") != "touch":
+            continue
+        ident = i.get("identifier") or i.get("name") or ""
+        low = (ident + " " + (i.get("name") or "")).lower()
+        if "hx83112" in low or "himax" in low:
+            target = top
+        elif "ft5452" in low or "fts" in low or "focal" in low:
+            target = bot
+        else:
+            target = bot if ("bottom" in low or "secondary" in low) else top
+        swaymsg(f'input "{ident}" map_to_output {target["name"]}')
+
+    # Launch the UI once.
+    tree = swaymsg("-t", "get_tree", "-r")
+    if '"duo-top"' not in tree:
+        swaymsg('exec foot --app-id=duo-top --font="JetBrains Mono:size=13" /usr/local/bin/duo-dashboard')
+    if '"duo-bottom"' not in tree:
+        swaymsg('exec foot --app-id=duo-bottom --font="JetBrains Mono:size=13" /usr/local/bin/duo-launcher')
+
+    # Give foot a moment, then pin each window to its workspace.
+    for _ in range(20):
+        time.sleep(0.2)
+        swaymsg('[app_id="duo-top"] move container to workspace 1')
+        swaymsg('[app_id="duo-bottom"] move container to workspace 2')
+    swaymsg("workspace 1")
+
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps({
+        "top": {"name": top["name"], "rect": top.get("rect")},
+        "bottom": {"name": bot["name"], "rect": bot.get("rect")},
+    }, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

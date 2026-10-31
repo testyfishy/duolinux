@@ -1,0 +1,50 @@
+#!/bin/bash
+# One-shot first boot: grow the root filesystem, start Tailscale if configured.
+set -u
+LOG=/var/log/duo-firstboot.log
+exec >>"$LOG" 2>&1
+echo "=== $(date -Is) first boot"
+
+# Grow the last partition to fill the card. Harmless if it already fills it.
+ROOT_SRC=$(findmnt -n -o SOURCE / 2>/dev/null || true)
+if [ -n "$ROOT_SRC" ]; then
+  DISK=$(echo "$ROOT_SRC" | sed -E 's/p?[0-9]+$//')
+  PART=$(echo "$ROOT_SRC" | grep -oE '[0-9]+$' || true)
+  if [ -n "$PART" ] && [ -b "$DISK" ]; then
+    growpart "$DISK" "$PART" || true
+    resize2fs "$ROOT_SRC" || true
+    echo "grew $ROOT_SRC on $DISK"
+  fi
+fi
+
+install -d -o duo -g duo -m 700 /home/duo/.ssh /home/duo/.local/state/duo
+install -d -m 755 /run/duo /var/lib/duo
+
+# Tailscale: unattended if a key was placed on the boot partition / image.
+if command -v nm-online >/dev/null 2>&1; then
+  nm-online -t 20 >/dev/null 2>&1 || true
+fi
+systemctl start tailscaled >/dev/null 2>&1 || true
+KEYFILE=/etc/duo/tailscale.authkey
+if [ -s "$KEYFILE" ] && ! grep -q '^#' "$KEYFILE"; then
+  KEY=$(tr -d '\r\n' < "$KEYFILE")
+  echo "starting tailscale with auth key"
+  nohup tailscale up --authkey="$KEY" --ssh --accept-routes \
+    --hostname="$(hostname)" >/run/duo/tailscale-login.txt 2>&1 &
+else
+  echo "no tailscale auth key; login from the launcher" > /run/duo/tailscale-login.txt
+fi
+
+# A sane default shell experience for the console.
+if ! grep -q 'duo-session' /home/duo/.bash_profile 2>/dev/null; then
+  cat > /home/duo/.bash_profile <<'EOF'
+if [ -z "${WAYLAND_DISPLAY:-}" ] && [ "$(tty)" = "/dev/tty1" ]; then
+  exec /usr/local/bin/duo-session
+fi
+EOF
+  chown duo:duo /home/duo/.bash_profile
+fi
+
+touch /var/lib/duo/firstboot.done
+sync
+echo "=== done"

@@ -1,0 +1,6 @@
+# Put a reusable Tailscale auth key here to provision without a browser.
+# Create one at https://login.tailscale.com/admin/settings/keys
+# The file must contain only the key (tskey-auth-...).
+#
+# This file is installed with mode 0600. Delete it after first boot if you
+# do not want the key sitting on the device.
