@@ -117,6 +117,7 @@ struct kbd {
 	struct drwsurf *surf;
 	struct drwsurf *popup_surf;
 	struct zwp_virtual_keyboard_v1 *vkbd;
+	int uinput_fd; /* >= 0 when key output goes through the kernel */
 
 	uint32_t last_popup_x, last_popup_y, last_popup_w, last_popup_h;
 };
