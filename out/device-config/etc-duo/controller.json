@@ -1,0 +1,19 @@
+{
+  "a": "enter",
+  "b": "esc",
+  "dpad_down": "down",
+  "dpad_left": "left",
+  "dpad_right": "right",
+  "dpad_up": "up",
+  "home": "launcher",
+  "l1": "click",
+  "l2": "none",
+  "l3": "none",
+  "r1": "right_click",
+  "r2": "none",
+  "r3": "none",
+  "select": "none",
+  "start": "none",
+  "x": "space",
+  "y": "menu"
+}

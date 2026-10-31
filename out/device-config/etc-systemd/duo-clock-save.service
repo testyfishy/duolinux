@@ -1,0 +1,6 @@
+[Unit]
+Description=Refresh the saved last-known time
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'mkdir -p /var/lib/duo && date -u +%s > /var/lib/duo/lastclock'

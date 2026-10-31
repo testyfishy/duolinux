@@ -1,0 +1,14 @@
+[Unit]
+Description=Qualcomm modem and WCN3990 Wi-Fi bring-up
+After=qrtr-ns.service pd-mapper.service tqftpserv.service rmtfs.service
+Wants=qrtr-ns.service pd-mapper.service tqftpserv.service rmtfs.service
+Before=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/duo-modem
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

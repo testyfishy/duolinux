@@ -1,0 +1,12 @@
+[Unit]
+Description=Set the clock from an HTTPS Date header
+After=network.target duo-usb-route.service
+Wants=duo-usb-route.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/duo-clock
+
+[Install]
+WantedBy=multi-user.target

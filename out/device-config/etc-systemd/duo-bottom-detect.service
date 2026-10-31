@@ -1,0 +1,13 @@
+[Unit]
+Description=Force the Duo Lite bottom panel (DP-1) to be detected
+DefaultDependencies=no
+Before=graphical.target display-manager.service
+After=systemd-udevd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/duo-bottom-detect
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target

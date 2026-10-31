@@ -1,0 +1,13 @@
+[Unit]
+Description=DuoLinux ssh self-heal + rescue shell
+After=network.target duo-usb-gadget.service
+Wants=duo-usb-gadget.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 8
+ExecStart=/usr/local/bin/duo-sshfix
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

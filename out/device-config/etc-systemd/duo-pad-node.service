@@ -1,0 +1,12 @@
+[Unit]
+Description=Recreate the built-in gamepad evdev node
+After=inputplumber.service
+Before=duo-backkey.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/duo-pad-node
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

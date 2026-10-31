@@ -1,0 +1,13 @@
+[Unit]
+Description=Duo Lite pad hotkeys (Select modifier + help overlay)
+After=inputplumber.service graphical.target
+Wants=inputplumber.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/padhotkeys
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

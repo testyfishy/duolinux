@@ -1,0 +1,12 @@
+[Unit]
+Description=Apply the saved mouse-mode setting
+After=inputplumber.service
+Wants=inputplumber.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/duo-mouse-apply
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
