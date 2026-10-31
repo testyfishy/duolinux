@@ -206,6 +206,16 @@ def wheel_hi_res(vertical: bool, hi_res: int) -> None:
 
 
 def main() -> int:
+    # Refuse to run a second copy: two watchers each toggle on the same key
+    # press, which cancels itself out and looks like the button doing nothing.
+    import fcntl
+    lock = open(f"/run/user/{os.getuid()}/duo-backkey.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("duo-backkey: another instance is already running", flush=True)
+        return 0
+
     handles: dict[str, int] = {}
     names: dict[str, str] = {}
     ranges: dict[str, tuple[float, float, float, float]] = {}

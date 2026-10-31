@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=On-screen keyboard (preload)
+Comment=Create the hidden keyboard so the first toggle is instant
+Exec=/usr/local/bin/duo-osk --init
+X-KDE-autostart-after=panel
+NoDisplay=true
