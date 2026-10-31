@@ -99,6 +99,35 @@ duo demo
 
 `tests/` covers the Android boot image and GPT layout. Hardware checks are in BRINGUP.md.
 
+## Cross-building applications
+
+Anything written in a compiled language is built on the PC, not on the handheld. Building on the
+device ties it up for tens of minutes and gains nothing: the target is aarch64 and the compiler does
+not need the hardware. Only build on the device when the PC toolchain cannot reproduce the target
+environment (for example, if a dependency has no arm64 headers or is fetched differently there).
+
+One-time setup, inside WSL:
+
+```sh
+wsl -d Ubuntu-26.04 -u root bash toolkit/cross/setup-root.sh   # cross gcc + arm64 sysroot
+wsl -d Ubuntu-26.04           bash toolkit/cross/setup-rust.sh  # rustup + aarch64 target
+```
+
+`setup-root.sh` installs `gcc-aarch64-linux-gnu` and extracts the arm64 runtime/development packages
+(`libdbus-1-dev`, `libudev-dev`, `libiio-dev` and their libraries) into `/srv/duo-arm64-sysroot`.
+It uses `dpkg-deb -x` rather than a chroot, because WSL2 here has no binfmt/qemu for arm64.
+
+Build and deploy a patched InputPlumber:
+
+```sh
+wsl -d Ubuntu-26.04 bash toolkit/cross/build-inputplumber.sh   # -> out/build/inputplumber
+wsl -d Ubuntu-26.04 bash toolkit/cross/deploy.sh               # scp + restart, keeps a .bak
+```
+
+The build applies every patch in `out/inputplumber-fork/` (`0001-axis-to-wheel`,
+`0002-idle-backoff`) to the upstream `v0.82.0` tarball and cross-compiles with
+`--target aarch64-unknown-linux-gnu`, using `PKG_CONFIG_SYSROOT_DIR` for the arm64 libraries.
+
 ## Reproducibility
 
 - The hardware base is a nightly; pin the URL/version in `duo.json` and record the SHA256 of the tar.
