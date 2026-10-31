@@ -3,7 +3,7 @@
 # Stage 1 of the 7.2.0-nf job (netfilter for Tailscale).
 set -uo pipefail
 WORK=${WORK:-$HOME/rocknix-nf}; mkdir -p "$WORK"; cd "$WORK"
-KEY=/mnt/c/Users/HTPC-Aran/Documents/Default\ Project/duolinux/out/duo_ssh_key
+KEY=/mnt/c/path/to/duolinux/out/duo_ssh_key
 SSH="ssh -i '$KEY' -o BatchMode=yes -o StrictHostKeyChecking=no root@192.168.86.33"
 
 echo "=== 1. device kernel facts"
