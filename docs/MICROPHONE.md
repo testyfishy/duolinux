@@ -1,117 +1,95 @@
-# Microphone: what the hardware actually does
+# Microphone
 
-**Status: no working built-in microphone on mainline 7.2.11-nf.** Capture itself
-works end to end (PCM opens, gain control, PipeWire source, HTTP transcription),
-but neither the digital mic path nor the analog codec path delivers audio. This
-page records the evidence so it does not have to be rediscovered.
+**Status: the hardware works (verified in stock Android); mainline was missing the
+supply route. Fix is in the tree, verification pending.**
 
-## The capture path
+## What was wrong
 
-`hw:0,2` (frontend `MultiMedia3`) -> `TX_CODEC_DMA_TX_3` -> `tx_macro`
-(`a460000.codec`) -> DEC0 -> either `MSM_DMIC` (digital mics) or `SWR_MIC`
-(analog mic through the WCD9370). The UCM device is:
+The stock Android image on this device routes the digital microphones like this
+(`dtbo` overlay, `trinket-idp-snd-card`):
 
 ```
-SectionDevice."Mic" {
-    cset "name='TX DEC0 MUX' MSM_DMIC"
-    cset "name='TX DMIC MUX0' DMIC2"
-    cset "name='TX_AIF1_CAP Mixer DEC0' 1"
-    cset "name='TX_DEC0 Volume' 84"
-    CapturePCM "hw:0,2"   # 1 ch, 48 kHz
-}
+"TX DMIC2", "Digital Mic2", "TX DMIC2", "MIC BIAS1",
+"TX DMIC3", "Digital Mic3", "TX DMIC3", "MIC BIAS1",
 ```
 
-Only `hw:0,2` is routed for capture. `hw:0,0` and `hw:0,1` open then fail with
-`EINVAL` because no capture backend is attached to those frontends.
+So the DMIC pair is **TX DMIC2/3** (the TX macro, as mainline expects) but it is
+powered from the **WCD9370's MIC BIAS1** — the codec's microphone bias is the
+microphone's supply.
 
-## Digital mic pads
+The mainline card's `audio-routing` array only had the speakers and the headset
+(`AMIC2`/`MIC BIAS2`). With no route from a DMIC input to `MIC BIAS1`, that bias
+is never switched on by DAPM, the mics get no power, and their data line sits at
+a constant level: **every DMIC input read exact digital zeros**.
 
-`500000.pinctrl` exposes four DMIC functions, one clock/data pair each:
+This is the same spelling mainline uses on other boards with this codec
+(`sm8450-hdk`, `sm8550-mtp`, `sm8550-qrd`): `"TX DMICn", "MIC BIASm"`.
 
-| Function | Pin | Pair | TX-macro inputs |
-|---|---|---|---|
-| `dmic0_clk` / `dmic0_data` | gpio125 / gpio126 | 0 | DMIC0, DMIC1 |
-| `dmic1_clk` / `dmic1_data` | gpio127 / gpio128 | 1 | DMIC2, DMIC3 |
+The pin side was already right: `gpio127/128` are muxed as `dmic1_clk`/`dmic1_data`
+(pair 1), which the TX macro numbers DMIC2 and DMIC3.
 
-The board DTS pin group is named `dmic23_active` but contains `dmic1_clk` /
-`dmic1_data`, i.e. **pair 1**, which the TX macro numbers DMIC2/DMIC3. The group
-name refers to the SoC's DMIC2/3 inputs, not to pin index. Pair 0 is unclaimed
-in `pinmux-pins`, so selecting DMIC0/DMIC1 reads a floating pad.
+## The fix
 
-Sweep with `TX DMIC MUX0 = 0..7`, 2-3 s each through `pw-record`:
+`toolkit/kernel/fix-dmic-bias.sh` adds to the board DTS:
 
-| Input | Result |
+```dts
+"TX DMIC2", "MIC BIAS1",
+"TX DMIC3", "MIC BIAS1";
+```
+
+`toolkit/kernel/install-nf.sh` installs the kernel **and the DTB** — the device
+tree is loaded from the FAT boot partition
+(`dtbs/qcom/sm6125-retroid-pocket-duo-lite.dtb`), not from the kernel image, so
+a DTS change only takes effect when that file is replaced too.
+
+## Evidence that led here
+
+| Observation | Meaning |
 |---|---|
-| DMIC0 | exact digital zero |
-| DMIC1 | rms ~4600, peak 32768, ~5-20 zero crossings/s - floating pad |
-| DMIC2 (UCM value) | exact digital zero |
-| DMIC3 | exact digital zero |
-| DMIC4..7 | exact digital zero |
+| Mic records fine in stock Android | hardware, bias and wiring all exist |
+| DMIC0/2/3, DMIC4-7 read **exact digital zero** | decimator clocked, no signal on the data line |
+| DMIC1 reads junk (~5-20 zero crossings/s) | gpio126 is unmuxed, so that pad floats |
+| TX macro registers while streaming: MCLK on (9.6 MHz), DEC0 muxed to DMIC2, SWR bit clear | the digital path is configured correctly |
+| 32-bit capture is MSB-aligned (low halfword always zero) | not a word-width problem |
+| Analog WCD9370 route (AMIC2/INP2) reads a floating ADC | no analog mic on that input |
+| Vendor DTB: `TX DMIC2/3` ← `MIC BIAS1`, `qcom,tx-dmic-sample-rate = <0x249f00>` (2.4 MHz) | the missing route and the intended PDM clock |
 
-Real speech is hundreds to thousands of zero crossings per second and a noise
-floor around -50 dBFS. Exact zeros are the signature of a clocked decimator with
-no PDM data; slow-wobble-with-spikes is a floating input.
+## Where the vendor configuration came from
 
-## It is not a settings problem
+The Android partitions are intact on the same eMMC (`mmcblk1`):
 
-Measured while a stream was running (`/sys/kernel/debug/regmap/a460000.codec-tx_macro/registers`):
+| Partition | Contents |
+|---|---|
+| `boot_a` | Android boot image (kernel, no FDT inside) |
+| `dtbo_a` | 18 device-tree overlays, including the audio routing above |
+| `vendor_boot_a` | 3 base device trees (Trinket / TRINKETP) |
 
-| Register | Value | Meaning |
-|---|---|---|
-| `0x0000` | `00000001` | TX MCLK enabled |
-| `0x0090` | `00000001` | 9.6 MHz MCLK selected |
-| `0x00c0`-`0x00cc` | `0000000e` | DMIC0..3 clock fields set |
-| `0x0100` | `00000020` | DEC0 input mux = DMIC2 |
-| `0x0104` | `00000000` | SWR bit clear -> MSM_DMIC mode |
-| `0x0400` | `00000024` | DEC0 path control, clock enabled |
+`toolkit/apps/extract-android-dtb.sh` pulls them, finds every FDT by magic,
+splits and decompiles them; `survey-vendor-dtb.sh` and `show-vendor-audio.sh`
+print the audio plumbing.
 
-So the macro is clocked, the decimator is pointed at the right input, the pads
-are muxed, and nothing arrives. The analyzer also rules out a word-width bug:
-a 32-bit capture is MSB-aligned (`values are multiples of 65536: 190464/190464`,
-low halfword always zero), so the S16 view is correct.
+## If the fix is not enough
 
-## Analog path
+Two further candidates, in order:
 
-The DTS wires the WCD9370 as `AMIC2 <- MIC BIAS2` and `TX SWR_INPUT1 <- ADC2_OUTPUT`,
-the usual headset-mic route. Driving it from userspace:
+1. **PDM clock rate.** The vendor asks for `qcom,tx-dmic-sample-rate = <0x249f00>`
+   (2.4 MHz). Mainline's TX macro writes `CDC_TX_SWR_DMIC_CLK_SEL_MASK` to 0 and
+   reads back `0x0E`, so the divider is whatever the reset value means. If the
+   mics stay silent after the bias fix, this is the next thing to set.
+2. **Pinctrl ownership.** The vendor hangs the DMIC pinctrl off the codec node
+   (`qcom,cdc-dmic23-gpios`), while our DTS puts it on the sound node. Only
+   matters if the pads turn out not to be held in the DMIC function while
+   recording.
 
-```
-cset "name='TX DEC0 MUX' SWR_MIC"
-cset "name='TX SMIC MUX0' SWR_MIC1"
-cset "name='ADC2 MUX' INP2"
-cset "name='ADC2_MIXER Switch' 1"
-cset "name='ADC2 Switch' 1"
-cset "name='ADC2 Volume' 20"
-cset "name='TX_AIF1_CAP Mixer DEC0' 1"
-cset "name='MultiMedia3 Mixer TX_CODEC_DMA_TX_3' 1"
-```
+## Nasty details worth remembering
 
-Result: 7.96 s capture, rms 2766, peak 32768, **2 zero crossings per second** -
-a floating analog input, not a microphone. `dmesg` also notes
-`wcd937x_codec audio-codec: supply vdd-mic-bias not found, using dummy regulator`,
-so whether the board even powers mic bias is unknown.
-
-## Gotchas that cost time
-
-- `amixer sget`/`cget` **by name can abort**; `cset` works. The driver's get
-  callback reports stale values (`TX_DEC0 Volume` reads back 1 after being set
-  to 84). Trust the write, verify by measuring the capture, not by reading back.
-- `arecord -D hw:0,2` gets **truncated** while PipeWire holds the card: a 45 s
-  request produced 8 s of audio. Use `pw-record` as the desktop user, or stop
-  PipeWire first.
-- `pw-record` must run as `duo` with `XDG_RUNTIME_DIR=/run/user/1000`; as root
-  it cannot reach the session PipeWire.
-- The hardware actually negotiates `S24_LE` at 48 kHz even when asked for s16;
-  that is normal and harmless.
-- Capture gain is `TX_DEC0 Volume` (0-124), not `ADC1 Volume`. The UCM wants 84;
-  it is usually 1 (about -83 dB) because the EnableSequence is not applied when
-  a plain PCM client opens the device.
-
-## What would settle it
-
-1. The vendor Android `mixer_paths*.xml` / `audio_platform_info.xml`, which
-   names the real mic (DMIC index or AMIC input) and any bias regulator.
-2. A TRRS headset in the 3.5 mm jack with the analog route above: if that
-   produces speech, the codec/SWR/DSP chain is fine and only the internal mic
-   is missing or unpowered.
-3. The schematic, for mic VDD and the DMIC data line.
+- `arecord` on `hw:0,2` gets **truncated** while PipeWire holds the card (a 45 s
+  request produced 8 s). Use `pw-record` as the desktop user
+  (`XDG_RUNTIME_DIR=/run/user/1000`), or stop PipeWire first.
+- `amixer` `sget`/`cget` **by name can abort**; use `amixer -c0 controls` to list
+  and `cset numid=N` to set. The capture gain is `TX_DEC0 Volume` (0-124, UCM
+  wants 84); the driver's read-back is unreliable, so judge by captured level.
+- The hardware negotiates `S24_LE` at 48 kHz even when asked for s16; that is
+  normal.
+- Only `hw:0,2` (MultiMedia3 -> `TX_CODEC_DMA_TX_3`) is routed for capture;
+  `hw:0,0` and `hw:0,1` open and then fail with `EINVAL`.
