@@ -102,7 +102,8 @@ image and every module tree stay on disk. Rollback is
 - 3/3 DPMS off/on cycles clean, 2 clean reboots, no new DRM errors
 - `nft list ruleset`, `iptables`, `ip rule` all work; 18 netfilter modules
 - charger hot-plug: `cc-state-change`, `vbus-change` and `attach-detach` IRQs
-  counted twice each (attach + detach), no errors in the JEITA path
+  counted on each transition, and charging confirmed under load: status
+  `Charging`, +1.7 A, pack voltage rising, 0 errors in the JEITA path
 - audio card `RetroidPocketDuoLite` present, 0 sound errors
 - modem and adsp remoteprocs `running`
 - 0 failed systemd units
