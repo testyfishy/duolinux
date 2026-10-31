@@ -1,0 +1,37 @@
+DuoLinux - licence notes
+========================
+
+1. This project's own work
+   (toolkit/, configs/, overlay/, tests/, docs/, out/remote/, out/overlay/,
+   out/abl/*.sh, out/patch/, the top-level scripts and README)
+
+   Copyright (c) 2026 the DuoLinux author. All rights reserved until a licence
+   is chosen.
+
+   >>> ACTION BEFORE PUBLISHING: pick a licence and replace this section with
+   >>> its text. An earlier version of README.md stated "Tooling and overlay:
+   >>> MIT"; if that is still the intent, put the MIT licence text here.
+
+2. Third-party code included in this repository (licences unchanged)
+
+   out/wvkbd-0.15/   wvkbd 0.15, modified.
+                     Copyright (c) 2020 John Sullivan <jsullivan@csumb.edu>
+                     and contributors. GNU GPL v3.0 - see out/wvkbd-0.15/LICENSE
+                     and COPYING. os-compatibility.[ch]: MIT/X, see
+                     out/wvkbd-0.15/COPYING_WESTON.
+                     Modifications: out/wvkbd-0.15/NOTICE.duolinux (GPLv3).
+
+   out/vboard-fork/  Vboard, modified, reference only (not deployed).
+                     Copyright (c) 2025 mdev588,
+                     Copyright (c) 2026 Archisman Panigrahi.
+                     GNU GPL v3.0 - see out/vboard-fork/LICENSE and
+                     out/vboard-fork/NOTICE.duolinux.
+
+   Those directories must keep their licence files and copyright notices
+   when redistributed. Section 1 does not apply to them.
+
+3. Not included
+
+   The Linux kernel (GPL-2.0), firmware blobs, openABL, InputPlumber and
+   Debian packages are fetched from their upstreams at build or install time
+   and are not redistributed in this repository.
