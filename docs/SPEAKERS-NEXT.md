@@ -58,3 +58,19 @@ through the VA macro).
 
 Both remaining audio defects therefore share one root cause with one fix: the
 newer DSP topology. See also `docs/MICROPHONE.md`.
+
+## PipeWire loudness chain: not possible on this build
+
+Tried to insert a limiter (LSP LV2) in front of the speaker so software gain could
+be added safely. It does not work here:
+- `libpipewire-module-filter-chain` loads, but the LV2 node fails:
+  `spa.filter-graph: can't load plugin type 'lv2': Invalid argument` and
+  `error: attempt to map invalid URI` - with both the short label and the full
+  `http://lsp-plug.in/plugins/lv2/limiter_stereo` URI.`n- A `builtin` copy chain produced no virtual sink either.
+- Because the module is mandatory, a bad config stops PipeWire entirely; the
+  config was removed and audio restored (pipewire/pipewire-pulse/wireplumber all
+  active, playback ok).
+
+So the software-loudness route needs fixing PipeWire's LV2 hosting first, which is
+outside the scope of this board support.
+
