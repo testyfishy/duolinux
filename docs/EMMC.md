@@ -192,15 +192,51 @@ without touching the SD: the eMMC filesystem labels become `LINUXROOT`/`LINUXBOO
 It aborted midway once because this initrd's trailing padding makes `cpio` return non-zero after
 extracting everything; the script now tolerates that and verifies the entry list before repacking.
 
+## Before switching (must do — advisor's go/no-go conditions)
+
+The migration is **not** ready to boot as-is: with both media labelled `STORAGE`, `duo-init` picks
+the eMMC even from an SD boot, so there is no independent rescue until the eMMC root is renamed.
+Do these, in order, on the running SD system:
+
+```sh
+sh out/remote/preflight-emmc.sh     # fs checks, ABL strings, wifi keys, modules, duo-init labels
+sh out/remote/fix-emmc-labels.sh    # eMMC root -> LINUXROOT (+GPT name), initrd patched
+```
+
+The fix renames only the eMMC ext4 partition to `LINUXROOT` (filesystem label *and* GPT name, because
+the `blkid | grep -i STORAGE` fallback matches PARTLABEL), patches only the `ROOTDEV` lookup in the
+eMMC initrd, updates its `extlinux.conf` (`root=`/`disk=`) and its `/etc/fstab`, and keeps
+`initrd.img.orig`. `p88` stays `ROCKNIX` on purpose: the ABL's lookup is unknown, and a duplicate
+`ROCKNIX` merely means `/boot` could come from the identical SD copy, which is harmless.
+
+After it, `findfs LABEL=STORAGE` must return the **SD card** and `findfs LABEL=LINUXROOT` the
+eMMC. Only then is the SD a real rescue.
+
+Initrd repack rules (the script enforces them): same compression (gzip), `find . | sort | cpio -o -H
+newc`, `duo-init` diff shows only the label change, still executable, and the `cpio -t` entry list
+is identical old vs new.
+
+**Do not boot Android before Linux works.** Repeated Android boot failures can make the bootloader
+mark the slot unbootable and switch to `abl_b`, which may be the stock ABL without the Linux menu.
+
 ## To finish (physical)
 
-1. Power off completely.
+1. Clean shutdown from the SD system.
 2. Remove the microSD card.
 3. Power on holding **Volume Down**.
 4. In the ABL menu: *Boot mode* = **Linux**, *Boot source* = **internal**, then Start.
 
-If it does not come up: reinsert the SD, hold Volume Down, set *Boot source* = **SD Card**. The card
-still carries a complete, working system.
+What the screen tells you if it fails:
+
+| Symptom | Meaning |
+|---|---|
+| Nothing, or an ABL error | the ABL is not finding the internal `ROCKNIX` partition |
+| Kernel boots, then a `duo-init` message and a long hang | initrd/root label wrong (the initrd logs to tty1 and `sleep 99999` on failure) |
+| systemd emergency mode | fstab or kernel modules wrong |
+
+Recovery: hold power ~15 s, insert the SD, Volume Down, *Boot source* = **SD Card**. It boots fully
+independently once the label fix is applied.
+
 
 ## Verification after the first internal boot
 
