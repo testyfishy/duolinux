@@ -295,7 +295,7 @@ vk_mods(struct kbd *kb, uint32_t mods)
     if (kb->uinput_fd >= 0) {
         uinput_mods(kb->uinput_fd, mods);
     } else if (kb->vkbd) {
-        vk_mods(kb, mods);
+        zwp_virtual_keyboard_v1_modifiers(kb->vkbd, mods, 0, 0, 0);
     }
 }
 
