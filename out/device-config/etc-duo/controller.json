@@ -12,8 +12,8 @@
   "r1": "right_click",
   "r2": "none",
   "r3": "none",
-  "select": "none",
-  "start": "none",
+  "select": "window_next",
+  "start": "window_prev",
   "x": "space",
   "y": "menu"
 }
