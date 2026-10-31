@@ -1,0 +1,88 @@
+# ---------------------------------------------------------------------------
+# SECRETS - never commit these
+# ---------------------------------------------------------------------------
+out/duo_ssh_key
+out/duo_ssh_key.pub
+*_ssh_key
+*_ssh_key.pub
+id_rsa*
+id_ed25519*
+*.pem
+*.key
+authorized_keys
+root_authorized_keys
+tailscale.authkey
+# hard-coded credentials / personal network details (parameterise before publishing)
+out/remote/sunshine-creds.ps1
+out/remote/pin-ip.sh
+out/remote/duo_rescue.py
+out/remote/duo-rescue.ps1
+out/overlay/usr/local/bin/duo-rescue-shell
+# local device/config state
+out/device.json
+duo.json
+
+# ---------------------------------------------------------------------------
+# Build output: out/ is ignored except the source-like parts listed below
+# ---------------------------------------------------------------------------
+/out/*
+!/out/remote/
+!/out/wvkbd-0.15/
+!/out/vboard-fork/
+!/out/overlay/
+!/out/abl/
+!/out/patch/
+!/out/*.sh
+!/out/README.txt
+cache/
+build/
+
+# images, archives, firmware, binaries
+*.img
+*.img.gz
+*.img.xz
+*.iso
+*.deb
+*.tar.zst
+*.tgz
+*.tar.gz
+*.zip
+*.elf
+*.bin
+*.exe
+*.so
+*.so.*
+abl_a*
+abl_b*
+*abl*backup*
+rocknix*.img*
+
+# wvkbd fork build products (sources only)
+out/wvkbd-0.15/*.o
+out/wvkbd-0.15/proto/*.o
+out/wvkbd-0.15/proto/*.c
+out/wvkbd-0.15/proto/*-client-protocol.h
+out/wvkbd-0.15/wvkbd-mobintl
+out/wvkbd-0.15/wvkbd
+out/wvkbd-0.15/config.h
+
+# Debian package payloads copied into the overlay (installed from apt, not ours)
+out/overlay/usr/bin/
+out/overlay/usr/lib/
+out/overlay/usr/share/
+out/overlay/home/
+
+# logs and editor/python junk
+*.log
+*.log.*
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.vscode/
+*~
+
+# Re-assert secrets last so no negation above can ever re-include them
+out/duo_ssh_key
+out/duo_ssh_key.pub
+

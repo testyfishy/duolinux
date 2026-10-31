@@ -1,0 +1,17 @@
+DuoLinux — dual-screen Debian on the Retroid Pocket Duo
+
+  top screen     fleet / LLM / local cockpit
+  bottom screen  launcher + terminals
+  start          launcher        select  on-screen keyboard
+  L1 / R1        switch screens  Y       refresh
+
+First things to do:
+  1. passwd                     change the default password
+  2. nano /etc/duo/duo.conf     add your server(s)
+  3. duo-keys                   copy the device key to your server
+  4. duo-tailscale login        join your tailnet (or put an auth key in
+                                /etc/duo/tailscale.authkey before boot)
+
+Logs:      ~/.local/state/duo/session.log
+           /var/log/duo-firstboot.log
+Recovery:  Ctrl-Alt-F2 for a console on any USB keyboard

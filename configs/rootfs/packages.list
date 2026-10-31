@@ -1,0 +1,99 @@
+# DuoLinux rootfs packages (Debian 13 trixie, arm64)
+# One package per line; comments and blanks ignored.
+
+# base system
+systemd
+systemd-sysv
+udev
+dbus
+sudo
+libpam-systemd
+polkitd
+locales
+tzdata
+kbd
+ca-certificates
+
+# networking
+network-manager
+wpasupplicant
+iw
+rfkill
+wireless-regdb
+systemd-resolved
+openssh-client
+openssh-server
+mosh
+sshfs
+curl
+wget
+gnupg
+jq
+rsync
+git
+iptables
+iproute2
+
+# audio
+pipewire
+pipewire-pulse
+wireplumber
+alsa-utils
+alsa-ucm-conf
+
+# bluetooth
+bluez
+
+# wayland session
+sway
+swaybg
+swayidle
+swaylock
+foot
+waybar
+fuzzel
+grim
+slurp
+wlr-randr
+wl-clipboard
+wvkbd
+xdg-desktop-portal-wlr
+xdg-utils
+fontconfig
+fonts-jetbrains-mono
+fonts-dejavu-core
+fonts-noto-color-emoji
+
+# hardware / power / storage
+brightnessctl
+zram-tools
+cloud-guest-utils
+dosfstools
+exfatprogs
+udisks2
+usbutils
+pciutils
+parted
+gdisk
+firmware-atheros
+firmware-qcom-soc
+
+# development / terminal quality of life
+python3
+python3-evdev
+tmux
+htop
+btop
+ncdu
+less
+file
+vim-tiny
+nano
+nnn
+zstd
+xz-utils
+
+# graphics
+libgl1-mesa-dri
+mesa-vulkan-drivers
+mesa-utils

@@ -1,0 +1,22 @@
+#!/bin/sh
+# Keep the graphical session alive on tty1. If sway exits, restart it after a
+# short pause; create /run/duo/no-restart to stop the loop.
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=sway
+export MOZ_ENABLE_WAYLAND=1
+export QT_QPA_PLATFORM=wayland
+export SDL_VIDEODRIVER=wayland
+export WLR_NO_HARDWARE_CURSORS=1
+mkdir -p "$HOME/.local/state/duo"
+LOG="$HOME/.local/state/duo/session.log"
+while :; do
+  echo "=== $(date -Is) starting sway" >> "$LOG"
+  sway --config /etc/sway/config >> "$LOG" 2>&1
+  rc=$?
+  echo "=== $(date -Is) sway exited rc=$rc" >> "$LOG"
+  [ -f /run/duo/no-restart ] && break
+  sleep 2
+done

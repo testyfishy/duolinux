@@ -1,0 +1,18 @@
+{
+  "_comment": "Copy to duo.json to override defaults. The default device is the Duo Lite.",
+  "device": "duol",
+  "kernel": {
+    "mode": "rocknix",
+    "rocknix_version": "20261029"
+  },
+  "rootfs": {
+    "suite": "trixie",
+    "hostname": "duo",
+    "user": "duo",
+    "password": "duo"
+  },
+  "image": {
+    "boot_mb": 512,
+    "root_mb": 7168
+  }
+}

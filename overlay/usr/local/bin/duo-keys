@@ -1,0 +1,45 @@
+#!/bin/bash
+# SSH access helper: show the device key, add a key, check tailscale ssh.
+set -e
+SSH_DIR="$HOME/.ssh"
+KEY="$SSH_DIR/id_ed25519"
+mkdir -p "$SSH_DIR"
+chmod 700 "$SSH_DIR"
+if [ ! -f "$KEY" ]; then
+  ssh-keygen -q -t ed25519 -N "" -C "duo@$(hostname)" -f "$KEY"
+fi
+cmd="${1:-show}"
+case "$cmd" in
+  show)
+    echo "Device public key:"
+    echo
+    cat "$KEY.pub"
+    echo
+    echo "Add it to your server with:"
+    echo "  ssh-copy-id -i ~/.ssh/id_ed25519.pub you@server"
+    echo
+    if command -v tailscale >/dev/null 2>&1; then
+      echo "Tailscale SSH:"
+      tailscale status --json 2>/dev/null | grep -E '"BackendState"|"HostName"' || true
+    fi
+    ;;
+  add)
+    mkdir -p "$SSH_DIR"
+    touch "$SSH_DIR/authorized_keys"
+    chmod 600 "$SSH_DIR/authorized_keys"
+    if [ -n "${2:-}" ]; then
+      echo "$2" >> "$SSH_DIR/authorized_keys"
+    else
+      echo "Paste the public key, then Ctrl-D:"
+      cat >> "$SSH_DIR/authorized_keys"
+    fi
+    echo "added."
+    ;;
+  *)
+    echo "usage: duo-keys [show|add [key]]"
+    ;;
+esac
+if [ -t 0 ]; then
+  echo
+  read -r -p "press enter to close" _
+fi

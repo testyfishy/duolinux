@@ -1,0 +1,9 @@
+#!/bin/bash
+# Live LLM/GPU view. Designed for a foot window on the lower screen.
+while :; do
+  clear
+  printf '\033[1;36mLLM / GPU\033[0m   %s\n\n' "$(date +%H:%M:%S)"
+  python3 /usr/local/lib/duo/duodeck.py print llm
+  printf '\n\033[2mq\033[0m quit   refresh in 5s\n'
+  read -r -t 5 -n 1 key && [ "$key" = q ] && break
+done

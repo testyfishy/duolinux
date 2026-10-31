@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Map the Retroid gamepad to keys the cockpit understands."""
+
+from __future__ import annotations
+
+import select
+import sys
+import time
+
+try:
+    import evdev
+    from evdev import ecodes
+except ImportError:
+    print("duo-inputd: python3-evdev is not installed", file=sys.stderr)
+    raise SystemExit(1)
+
+MAP = {
+    ecodes.BTN_SOUTH: ecodes.KEY_ENTER,
+    ecodes.BTN_EAST: ecodes.KEY_ESC,
+    ecodes.BTN_NORTH: ecodes.KEY_F2,
+    ecodes.BTN_WEST: ecodes.KEY_F1,
+    ecodes.BTN_TL: ecodes.KEY_F6,
+    ecodes.BTN_TR: ecodes.KEY_F7,
+    ecodes.BTN_TL2: ecodes.KEY_F8,
+    ecodes.BTN_TR2: ecodes.KEY_F9,
+    ecodes.BTN_START: ecodes.KEY_F10,
+    ecodes.BTN_SELECT: ecodes.KEY_F11,
+    ecodes.BTN_MODE: ecodes.KEY_F12,
+    ecodes.BTN_THUMBL: ecodes.KEY_F5,
+    ecodes.BTN_THUMBR: ecodes.KEY_PAGEUP,
+    ecodes.BTN_DPAD_UP: ecodes.KEY_UP,
+    ecodes.BTN_DPAD_DOWN: ecodes.KEY_DOWN,
+    ecodes.BTN_DPAD_LEFT: ecodes.KEY_LEFT,
+    ecodes.BTN_DPAD_RIGHT: ecodes.KEY_RIGHT,
+}
+HAT = {
+    ecodes.ABS_HAT0X: {1: ecodes.KEY_RIGHT, -1: ecodes.KEY_LEFT},
+    ecodes.ABS_HAT0Y: {1: ecodes.KEY_DOWN, -1: ecodes.KEY_UP},
+}
+
+
+def find_device():
+    for path in evdev.list_devices():
+        try:
+            d = evdev.InputDevice(path)
+        except Exception:  # noqa: BLE001
+            continue
+        n = d.name.lower()
+        caps = d.capabilities(verbose=False)
+        keys = caps.get(ecodes.EV_KEY, [])
+        if ("retroid" in n or "rsinput" in n or "gamepad" in n) and ecodes.BTN_SOUTH in keys:
+            return d
+        if ecodes.BTN_SOUTH in keys and ecodes.BTN_MODE in keys and "keyboard" not in n:
+            return d
+    return None
+
+
+def main() -> None:
+    dev = None
+    while dev is None:
+        dev = find_device()
+        if dev is None:
+            time.sleep(2)
+    print(f"duo-inputd: using {dev.path} {dev.name!r}", flush=True)
+    ui = evdev.UInput({ecodes.EV_KEY: sorted(set(MAP.values()))}, name="duo-inputd")
+    held: set[int] = set()
+    try:
+        dev.grab()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        while True:
+            r, _, _ = select.select([dev.fd], [], [], 5)
+            if not r:
+                continue
+            for e in dev.read():
+                if e.type == ecodes.EV_KEY and e.code in MAP:
+                    k = MAP[e.code]
+                    ui.write(ecodes.EV_KEY, k, e.value)
+                    ui.syn()
+                elif e.type == ecodes.EV_ABS and e.code in HAT:
+                    k = HAT[e.code].get(e.value)
+                    if k and k not in held:
+                        held.add(k)
+                        ui.write(ecodes.EV_KEY, k, 1)
+                        ui.syn()
+                    elif not e.value:
+                        for kk in HAT[e.code].values():
+                            if kk in held:
+                                held.discard(kk)
+                                ui.write(ecodes.EV_KEY, kk, 0)
+                                ui.syn()
+    finally:
+        try:
+            dev.ungrab()
+        except Exception:  # noqa: BLE001
+            pass
+        ui.close()
+
+
+if __name__ == "__main__":
+    main()
