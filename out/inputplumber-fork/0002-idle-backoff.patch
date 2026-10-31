@@ -1,0 +1,49 @@
+--- a/src/input/source/mod.rs
++++ b/src/input/source/mod.rs
+@@ -383,6 +383,10 @@
+                 if let Err(e) = implementation.update_event_filter(event_filter.clone()) {
+                     log::error!("Failed to set default event filter for {device_id}: {e}");
+                 };
++                // Consecutive polls that returned no events. Used to back the
++                // poll rate off while the device is idle: a fixed 2.5 ms poll
++                // woke a tokio worker 400 times a second per source for nothing.
++                let mut empty_polls: u32 = 0;
+                 loop {
+                     let poll_time_start = Instant::now();
+ 
+@@ -405,6 +409,7 @@
+                         poll_span.start();
+                     }
+                     let events = implementation.poll()?;
++                    let poll_was_empty = events.is_empty();
+                     if let Some(ref mut context) = context {
+                         let poll_span = context.metrics_mut().get_mut("source_poll").unwrap();
+                         poll_span.finish();
+@@ -458,8 +463,26 @@
+                     }
+ 
+                     let poll_time = poll_time_start.elapsed();
++
++                    // Back off while the device is quiet: after 20 empty polls
++                    // the sleep doubles every 20 further polls, capped at 16 ms,
++                    // so an active device stays at the configured rate. Any
++                    // event resets it immediately.
++                    let mut sleep_for = self.options.poll_rate;
++                    if poll_was_empty {
++                        empty_polls = empty_polls.saturating_add(1);
++                        if empty_polls > 20 {
++                            let shift = ((empty_polls - 20) / 20).min(3);
++                            sleep_for = sleep_for
++                                .saturating_mul(1u32 << shift)
++                                .min(Duration::from_millis(16));
++                        }
++                    } else {
++                        empty_polls = 0;
++                    }
++
+                     // Sleep up to the configured duration after polling timeout
+-                    if let Some(remaining) = self.options.poll_rate.checked_sub(poll_time) {
++                    if let Some(remaining) = sleep_for.checked_sub(poll_time) {
+                         log::trace!("{:?}: Sleep time remaining: {remaining:?}", device_id);
+                         thread::sleep(remaining);
+                     } else {

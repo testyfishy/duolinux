@@ -1,0 +1,232 @@
+From c55792bf3894e09d055e431f38639799b44f6f2f Mon Sep 17 00:00:00 2001
+From: DuoLinux <duolinux@localhost>
+Date: Fri, 30 Oct 2026 21:57:23 -0600
+Subject: [PATCH] Add axis-to-wheel translation and wheel velocity in the mouse
+ target
+
+A stick mapped to mouse wheel previously hit TranslationError::NotImplemented,
+and the mouse target only integrated pointer motion, so a wheel target produced
+no events at all.
+
+- capability_map: MouseWheelCapability gains speed (hi-res units/second) and
+  deadzone
+- value.rs: translate_axis_to_wheel() returns a velocity, deadzone-rescaled and
+  curved so scrolling starts gradually
+- mouse.rs: wheel velocity and remainder state, REL_WHEEL_HI_RES advertised,
+  and integration in poll() alongside motion so the rate is time-based
+
+One detent is 120 hi-res units; the legacy REL_WHEEL event is emitted with it.
+---
+ src/config/capability_map.rs |  7 ++++
+ src/input/event/value.rs     | 68 +++++++++++++++++++++++++++++++++++-
+ src/input/target/mouse.rs    | 55 +++++++++++++++++++++++++++--
+ 3 files changed, 127 insertions(+), 3 deletions(-)
+
+diff --git a/src/config/capability_map.rs b/src/config/capability_map.rs
+index 1fed72c..b702739 100644
+--- a/src/config/capability_map.rs
++++ b/src/config/capability_map.rs
+@@ -302,6 +302,13 @@ pub struct MouseMotionCapability {
+ #[serde(rename_all = "snake_case")]
+ pub struct MouseWheelCapability {
+     pub direction: Option<String>,
++    /// Wheel velocity at full deflection, in hi-res units per second
++    /// (120 units = one detent).
++    #[serde(default)]
++    pub speed: Option<f64>,
++    /// Axis deadzone before any scrolling starts.
++    #[serde(default)]
++    pub deadzone: Option<f64>,
+ }
+ 
+ #[derive(Debug, Deserialize, Serialize, Clone, JsonSchema, PartialEq)]
+diff --git a/src/input/event/value.rs b/src/input/event/value.rs
+index 253579d..2067769 100644
+--- a/src/input/event/value.rs
++++ b/src/input/event/value.rs
+@@ -312,7 +312,9 @@ impl InputValue {
+                                 Mouse::Motion => self
+                                     .translate_axis_to_mouse_motion(source_config, target_config),
+                                 Mouse::Button(_) => self.translate_axis_to_button(source_config),
+-                                Mouse::Wheel => Err(TranslationError::NotImplemented),
++                                Mouse::Wheel => {
++                                    self.translate_axis_to_wheel(target_config)
++                                }
+                             },
+                             // Axis -> Keyboard
+                             Capability::Keyboard(_) => self.translate_axis_to_button(source_config),
+@@ -831,6 +833,70 @@ impl InputValue {
+     }
+ 
+     /// Translate the button value into an axis value based on the given config
++    /// Translate an axis (stick) into a wheel *velocity* in hi-res units per
++    /// second. The mouse target integrates this over time, like pointer motion,
++    /// so scroll speed is independent of the controller's report rate.
++    fn translate_axis_to_wheel(
++        &self,
++        target_config: &CapabilityConfig,
++    ) -> Result<InputValue, TranslationError> {
++        let Some(mouse_config) = target_config.mouse.as_ref() else {
++            return Err(TranslationError::InvalidTargetConfig(
++                "No mouse config to translate axis to mouse wheel".to_string(),
++            ));
++        };
++        let Some(wheel) = mouse_config.wheel.as_ref() else {
++            return Err(TranslationError::InvalidTargetConfig(
++                "No mouse wheel config found".to_string(),
++            ));
++        };
++
++        let speed = wheel.speed.unwrap_or(1200.0);
++        let deadzone = wheel.deadzone.unwrap_or(0.15);
++
++        let (x, y) = match self {
++            InputValue::Vector2 { x, y } => (*x, *y),
++            InputValue::Vector3 { x, y, z: _ } => (*x, *y),
++            _ => (None, None),
++        };
++
++        // Rescale past the deadzone so scrolling starts gradually instead of
++        // jumping to the deadzone's edge value, then apply a mild curve for
++        // fine control near the centre.
++        let shape = |value: f64| -> f64 {
++            if value.abs() <= deadzone {
++                return 0.0;
++            }
++            let magnitude = (value.abs() - deadzone) / (1.0 - deadzone);
++            let shaped = magnitude.powf(1.3);
++            if value < 0.0 { -shaped } else { shaped }
++        };
++
++        // Stick up is negative Y; a negative REL_WHEEL scrolls content up, so
++        // the axis sign is preserved.
++        let vertical = y.map(|v| shape(v) * speed);
++        let horizontal = x.map(|v| shape(v) * speed);
++
++        let value = match wheel.direction.as_deref() {
++            Some("horizontal") => InputValue::Vector2 { x: horizontal, y: None },
++            Some("left") => InputValue::Vector2 {
++                x: horizontal.filter(|v| *v < 0.0),
++                y: None,
++            },
++            Some("right") => InputValue::Vector2 {
++                x: horizontal.filter(|v| *v > 0.0),
++                y: None,
++            },
++            // Default: vertical. Stick up produces a positive value, which the
++            // mouse target turns into an upward wheel event.
++            _ => InputValue::Vector2 {
++                x: None,
++                y: vertical.map(|v| -v),
++            },
++        };
++        Ok(value)
++    }
++
+     fn translate_button_to_wheel(
+         &self,
+         target_config: &CapabilityConfig,
+diff --git a/src/input/target/mouse.rs b/src/input/target/mouse.rs
+index a77590c..364f376 100644
+--- a/src/input/target/mouse.rs
++++ b/src/input/target/mouse.rs
+@@ -2,8 +2,8 @@ use std::{collections::HashMap, error::Error, time::Instant};
+ 
+ use evdev::{
+     uinput::{VirtualDevice, VirtualDeviceBuilder},
+-    AbsInfo, AbsoluteAxisCode, AttributeSet, BusType, InputEvent, InputId, KeyCode,
+-    RelativeAxisCode,
++    AbsInfo, AbsoluteAxisCode, AttributeSet, BusType, EventType, InputEvent, InputId,
++    KeyCode, RelativeAxisCode,
+ };
+ 
+ use crate::{
+@@ -48,6 +48,8 @@ impl Default for MouseConfig {
+ pub struct MouseMotionState {
+     mouse_remainder: (f64, f64),
+     mouse_velocity: (f64, f64),
++    wheel_velocity: f64,
++    wheel_remainder: f64,
+ }
+ 
+ /// [MouseDevice] is a target virtual mouse that can be used to send mouse input
+@@ -109,6 +111,8 @@ impl MouseDevice {
+                 RelativeAxisCode::REL_Y,
+                 RelativeAxisCode::REL_WHEEL,
+                 RelativeAxisCode::REL_HWHEEL,
++                RelativeAxisCode::REL_WHEEL_HI_RES,
++                RelativeAxisCode::REL_HWHEEL_HI_RES,
+             ]))?
+             .build()?;
+ 
+@@ -161,6 +165,21 @@ impl TargetInputDevice for MouseDevice {
+             return Ok(());
+         }
+ 
++        // Wheel velocity from an axis is integrated in poll(), so the scroll
++        // rate does not depend on how often the controller reports.
++        if event.is_translated()
++            && matches!(event.as_capability(), Capability::Mouse(Mouse::Wheel))
++        {
++            if let InputValue::Vector2 { x, y } = event.get_value() {
++                if let Some(v) = y {
++                    self.state.wheel_velocity = v;
++                } else if let Some(v) = x {
++                    self.state.wheel_velocity = v;
++                }
++            }
++            return Ok(());
++        }
++
+         // Translate and emit the event(s)
+         let evdev_events = self.translate_event(event);
+         if let Err(e) = self.device.emit(evdev_events.as_slice()) {
+@@ -187,6 +206,8 @@ impl TargetInputDevice for MouseDevice {
+     fn clear_state(&mut self) {
+         self.state.mouse_velocity = (0.0, 0.0);
+         self.state.mouse_remainder = (0.0, 0.0);
++        self.state.wheel_velocity = 0.0;
++        self.state.wheel_remainder = 0.0;
+     }
+ }
+ 
+@@ -249,6 +270,36 @@ impl TargetOutputDevice for MouseDevice {
+             }
+         }
+ 
++        // Integrate wheel velocity: 120 hi-res units make one detent, and the
++        // legacy event is emitted alongside for consumers that ignore hi-res.
++        let wheel_delta = delta.as_secs_f64() * self.state.wheel_velocity;
++        if wheel_delta != 0.0 {
++            self.state.wheel_remainder += wheel_delta;
++            let hi_res = self.state.wheel_remainder.trunc() as i32;
++            self.state.wheel_remainder -= hi_res as f64;
++            let notches = hi_res / 120;
++            let mut events = Vec::new();
++            if hi_res != 0 {
++                events.push(InputEvent::new(
++                    EventType::RELATIVE.0,
++                    RelativeAxisCode::REL_WHEEL_HI_RES.0,
++                    hi_res,
++                ));
++            }
++            if notches != 0 {
++                events.push(InputEvent::new(
++                    EventType::RELATIVE.0,
++                    RelativeAxisCode::REL_WHEEL.0,
++                    notches,
++                ));
++            }
++            if !events.is_empty() {
++                if let Err(e) = self.device.emit(&events) {
++                    return Err(e.to_string().into());
++                }
++            }
++        }
++
+         Ok(vec![])
+     }
+ }
+-- 
+2.47.3
+
