@@ -133,6 +133,14 @@ def rewrite(path: pathlib.Path, bindings: dict[str, str], with_passthrough: bool
     mapping = [m for m in doc.get("mapping", [])
                if not is_managed(m) and not uses_wheel(m)]
     mapping.extend(build_entries(bindings, with_passthrough))
+    # Right stick scrolling, handled by InputPlumber itself (patched to support
+    # axis -> wheel). Unmapped in the button table because it is an axis.
+    mapping.append({
+        "name": "Duo right stick scroll",
+        "source_event": {"gamepad": {"axis": {"name": "RightStick"}}},
+        "target_events": [{"mouse": {"wheel": {
+            "direction": "vertical", "speed": 1200.0, "deadzone": 0.15}}}],
+    })
     doc["mapping"] = mapping
     path.write_text(yaml.safe_dump(doc, sort_keys=False))
     return len(mapping)
