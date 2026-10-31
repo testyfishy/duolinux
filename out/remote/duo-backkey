@@ -1,31 +1,32 @@
 #!/usr/bin/env python3
 """Duo pad daemon.
 
-Jobs that cannot be expressed in InputPlumber profiles:
+Three things that InputPlumber cannot do for this device:
 
-  * Back button (KEY_F1 on InputPlumber's virtual keyboard) toggles the
-    on-screen keyboard.
-  * Home button (KEY_HOME) runs a configurable action from /etc/duo/controller.json.
-  * Right stick scrolls. InputPlumber's profile schema has no wheel target
-    (MouseButton::WheelUp/Down translate to an empty event list), so the stick
-    is left unmapped and the wheel events are generated here instead.
+  * Back button (KEY_F1 on its virtual keyboard) toggles the on-screen keyboard.
+  * Home button (KEY_HOME) runs a configurable action.
+  * Right stick scrolling. InputPlumber's wheel buttons are declared but
+    translate to an empty event list, and its profile format has no wheel-axis
+    target, so the stick is left unmapped and the wheel events are generated
+    here instead.
 
-Two device quirks this code has to cope with, both measured on the hardware:
+Scrolling is emitted per input event rather than on a timer: InputPlumber's
+smooth left-stick motion comes from reacting to every event as it arrives, so a
+polling loop would always feel late by comparison. Amounts are sent as hi-res
+wheel deltas (120 units per notch), accumulated so partial ticks are not lost.
 
-  * InputPlumber hides the physical pad's nodes from userspace (so games do not
-    see a duplicate), which is why /dev/input/eventN has to be recreated by
-    duo-pad-node.service. The physical pad is the only place the right stick is
-    readable, because a profile that maps an axis consumes it.
-  * Axis ranges differ per device: the physical pad reports +/-850 for both
-    sticks, while the virtual DualSense reports 0..255 centred at 127. The range
-    is therefore queried per device with EVIOCGABS instead of being assumed.
+Two hardware quirks handled here:
 
-Wheel events are sent as hi-res (120 units per notch) plus the legacy event,
-which is what libinput and Qt use for smooth scrolling.
+  * InputPlumber hides the physical pad's nodes (devices get recreated by
+    duo-pad-node.service) and grabs them intermittently, so the axis source is
+    whichever device is currently delivering events rather than a fixed one.
+  * Axis ranges differ per device: the pad reports +/-850, the virtual DualSense
+    0..255 centred at 127. The range is queried per device with EVIOCGABS.
 """
 import fcntl
 import json
 import os
+import select
 import struct
 import subprocess
 import sys
@@ -39,10 +40,10 @@ ABS_RX = 3
 ABS_RY = 4
 
 DEBOUNCE = 0.4
-SCROLL_DEADZONE = 0.32
-SCROLL_INTERVAL = 0.05       # seconds between notches while the stick is held
-HI_RES_STEP = 120            # libinput units per wheel notch
-TICK = 0.02
+SCROLL_DEADZONE = 0.12
+SCROLL_MAX_HI_RES_PER_SEC = 2400   # 20 notches/second at full deflection
+HI_RES_STEP = 120
+TICK = 0.005
 
 PAD = "Retroid Pocket Duo Lite Gamepad"
 DUALSENSE = "Sony Interactive Entertainment DualSense Wireless Controller"
@@ -62,21 +63,23 @@ _direction_cache: tuple[float, bool] = (0.0, True)
 
 
 def natural_scroll() -> bool:
-    """True when pushing the stick up scrolls up (the default)."""
+    """True when pushing the stick up scrolls up (the default).
+
+    Cached for a second: this is consulted on every emitted wheel tick, and a
+    stat per tick was measurably expensive.
+    """
     global _direction_cache
-    try:
-        mtime = os.stat(SCROLL_DIRECTION).st_mtime
-    except OSError:
-        return True
-    cached_mtime, cached_value = _direction_cache
-    if mtime == cached_mtime:
+    now = time.time()
+    cached_time, cached_value = _direction_cache
+    if now - cached_time < 1.0:
         return cached_value
+    value = True
     try:
         with open(SCROLL_DIRECTION) as handle:
             value = handle.read().strip().lower() not in ("standard", "inverted", "off")
     except OSError:
-        value = True
-    _direction_cache = (mtime, value)
+        pass
+    _direction_cache = (now, value)
     return value
 
 
@@ -85,7 +88,6 @@ def eviocgabs(code: int) -> int:
 
 
 def axis_range(fd: int, code: int) -> tuple[float, float]:
-    """Return (centre, half_range) for one axis of an already-open device."""
     buf = bytearray(24)
     try:
         fcntl.ioctl(fd, eviocgabs(code), buf)
@@ -152,9 +154,9 @@ def handle_home() -> None:
         toggle_keyboard()
 
 
-def wheel(vertical: bool, notches: int) -> None:
+def wheel_hi_res(vertical: bool, hi_res: int) -> None:
     global _mouse
-    if notches == 0:
+    if hi_res == 0:
         return
     try:
         import uinput
@@ -166,15 +168,15 @@ def wheel(vertical: bool, notches: int) -> None:
                 [uinput.REL_WHEEL, uinput.REL_HWHEEL,
                  uinput.REL_WHEEL_HI_RES, uinput.REL_HWHEEL_HI_RES],
                 name="duo-scroll")
-        except Exception as exc:            # noqa: BLE001 - never die on this
+        except Exception as exc:            # noqa: BLE001
             print(f"duo-backkey: wheel device unavailable: {exc}", flush=True)
             return
     if vertical:
-        _mouse.emit(uinput.REL_WHEEL_HI_RES, notches * HI_RES_STEP, syn=False)
-        _mouse.emit(uinput.REL_WHEEL, notches, syn=False)
+        _mouse.emit(uinput.REL_WHEEL_HI_RES, hi_res, syn=False)
+        _mouse.emit(uinput.REL_WHEEL, int(hi_res / HI_RES_STEP), syn=False)
     else:
-        _mouse.emit(uinput.REL_HWHEEL_HI_RES, notches * HI_RES_STEP, syn=False)
-        _mouse.emit(uinput.REL_HWHEEL, notches, syn=False)
+        _mouse.emit(uinput.REL_HWHEEL_HI_RES, hi_res, syn=False)
+        _mouse.emit(uinput.REL_HWHEEL, int(hi_res / HI_RES_STEP), syn=False)
     _mouse.syn()
 
 
@@ -182,33 +184,93 @@ def main() -> int:
     handles: dict[str, int] = {}
     names: dict[str, str] = {}
     ranges: dict[str, tuple[float, float, float, float]] = {}
-    sticks: dict[str, list[int]] = {}
+    sticks: dict[str, list[int | None]] = {}
+    last_abs: dict[str, float] = {}
     last_key = 0.0
-    last_scroll = 0.0
+    active_source = None
 
+    state = {"emit": time.time(), "v": 0.0, "h": 0.0}
+
+    def emit_scroll(path: str) -> None:
+        """Turn the current stick deflection into wheel motion at a fixed rate.
+
+        Emission is on a timer (125 Hz) rather than per input event: the pad's
+        events arrive irregularly, and emitting straight from them made the
+        scroll visibly stutter even though the total amount was right.
+        """
+        cx, hx, cy, hy = ranges[path]
+        raw_x, raw_y = sticks[path]
+        vertical = 0.0 if raw_y is None else (raw_y - cy) / hy
+        horizontal = 0.0 if raw_x is None else (raw_x - cx) / hx
+        vertical = max(-1.0, min(1.0, vertical))
+        horizontal = max(-1.0, min(1.0, horizontal))
+        if not natural_scroll():
+            vertical = -vertical
+
+        now = time.time()
+        dt = min(max(now - state["emit"], 0.002), 0.05)
+
+        def rate(value: float) -> float:
+            magnitude = (abs(value) - SCROLL_DEADZONE) / (1.0 - SCROLL_DEADZONE)
+            if magnitude <= 0.0:
+                return 0.0
+            return (magnitude ** 1.15) * SCROLL_MAX_HI_RES_PER_SEC * dt
+
+        step_v = rate(vertical) * (-1.0 if vertical > 0 else 1.0)
+        step_h = rate(horizontal) * (1.0 if horizontal > 0 else -1.0)
+        if not step_v and not step_h:
+            return
+        state["emit"] = now
+
+        if step_v:
+            state["v"] += step_v
+            whole = int(state["v"])
+            if whole:
+                state["v"] -= whole
+                wheel_hi_res(True, whole)
+        if step_h:
+            state["h"] += step_h
+            whole = int(state["h"])
+            if whole:
+                state["h"] -= whole
+                wheel_hi_res(False, whole)
+
+    next_scan = 0.0
     while True:
-        for path, name in device_paths().items():
-            if path in handles:
-                continue
-            try:
-                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
-            except OSError:
-                continue
-            handles[path] = fd
-            names[path] = name
-            cx, hx = axis_range(fd, ABS_RX)
-            cy, hy = axis_range(fd, ABS_RY)
-            ranges[path] = (cx, hx, cy, hy)
-            sticks[path] = [None, None]        # [x_raw, y_raw]
-            print(f"duo-backkey: listening on {name} ({path}) "
-                  f"x={ranges[path][0]:.0f}+-{hx:.0f} y={cy:.0f}+-{hy:.0f}",
-                  flush=True)
+        # Rescan the device list every two seconds instead of on every pass:
+        # parsing /proc/bus/input/devices 200 times a second was the single
+        # biggest cost in this daemon (28% of a core).
+        now = time.time()
+        if now >= next_scan:
+            next_scan = now + 2.0
+            for path, name in device_paths().items():
+                if path in handles:
+                    continue
+                try:
+                    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                except OSError:
+                    continue
+                handles[path] = fd
+                names[path] = name
+                cx, hx = axis_range(fd, ABS_RX)
+                cy, hy = axis_range(fd, ABS_RY)
+                ranges[path] = (cx, hx, cy, hy)
+                sticks[path] = [None, None]
+                print(f"duo-backkey: listening on {name} ({path}) "
+                      f"x={cx:.0f}+-{hx:.0f} y={cy:.0f}+-{hy:.0f}", flush=True)
 
         if not handles:
-            time.sleep(2)
+            time.sleep(1.0)
             continue
 
-        for path, fd in list(handles.items()):
+        # Block until an event arrives or the tick expires - no busy polling.
+        try:
+            readable, _, _ = select.select(list(handles.values()), [], [], TICK)
+        except InterruptedError:
+            readable = []
+
+        for fd in readable:
+            path = next(p for p, h in handles.items() if h == fd)
             try:
                 data = os.read(fd, 24 * 128)
             except BlockingIOError:
@@ -225,6 +287,10 @@ def main() -> int:
                         sticks[path][1] = value
                     elif code == ABS_RX:
                         sticks[path][0] = value
+                    else:
+                        continue
+                    last_abs[path] = time.time()
+                    active_source = path
                 elif kind == EV_KEY and value == 1:
                     now = time.time()
                     if now - last_key < DEBOUNCE:
@@ -236,38 +302,14 @@ def main() -> int:
                         last_key = now
                         handle_home()
 
-        # Prefer the physical pad; the DualSense copy is a fallback only, so a
-        # single stick movement can never produce double scrolling.
-        source = next((p for p, n in names.items()
-                       if n == PAD and p in sticks), None)
-        if source is None:
-            source = next((p for p, n in names.items()
-                           if n == DUALSENSE and p in sticks), None)
-
+        # Keep scrolling while the stick is held: evdev only reports *changes*,
+        # so a steady stick produces no events, and an event-recency window
+        # stopped the scroll mid-gesture (the intermittent pauses). The last
+        # known deflection is authoritative until the stick is released or the
+        # device goes quiet for long enough to mean it was unplugged.
         now = time.time()
-        if source and now - last_scroll >= SCROLL_INTERVAL:
-            cx, hx, cy, hy = ranges[source]
-            raw_x, raw_y = sticks[source]
-            vertical = 0.0 if raw_y is None else (raw_y - cy) / hy
-            horizontal = 0.0 if raw_x is None else (raw_x - cx) / hx
-            vertical = max(-1.0, min(1.0, vertical))
-            horizontal = max(-1.0, min(1.0, horizontal))
-            if abs(vertical) > SCROLL_DEADZONE:
-                last_scroll = now
-                notches = 1 if abs(vertical) < 0.8 else 2
-                # The pad reports "stick up" as a positive axis value, and a
-                # negative REL_WHEEL is what scrolls content up. Natural means
-                # stick up => scroll up.
-                if natural_scroll():
-                    signed = -notches if vertical > 0 else notches
-                else:
-                    signed = notches if vertical > 0 else -notches
-                wheel(True, signed)
-            elif abs(horizontal) > SCROLL_DEADZONE:
-                last_scroll = now
-                wheel(False, -1 if horizontal < 0 else 1)
-
-        time.sleep(TICK)
+        if active_source and now - last_abs.get(active_source, 0) < 3.0:
+            emit_scroll(active_source)
 
 
 if __name__ == "__main__":
