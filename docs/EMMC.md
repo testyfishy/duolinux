@@ -166,12 +166,49 @@ is lost — the card is untouched and still boots the old system.
   in `out/backups/` off-device. The Android system partitions are not modified.
 
 
-## Verification after the move
+## State after the 2026-10-31 migration
 
-1. Boot without the SD: `findmnt /` shows `/dev/mmcblk1p89`, `lsblk` confirms the labels.
-2. Re-run `out/remote/disk-bench.sh` — expect ~2.8k IOPS 4K QD1 and >300 MiB/s sequential.
-3. Boot Android from the ABL menu and confirm it comes up to setup (fresh userdata, 32 GiB).
-4. Measure application start-up before and after (e.g. `systemd-analyze`, Firefox cold start).
+Done and verified before the device suspended for the night:
+
+- `userdata` resized to **67,108,864 sectors (32 GiB)**, keeping the Android type GUID
+  (`1B81E7E6-…`) and unique GUID (`E08179DE-…`); its first 8 MiB and the stale `metadata`
+  partition were zeroed, so Android will factory-reset on its next boot.
+- New `p88` **ROCKNIX** (512 MiB vfat) and `p89` **STORAGE** (69 GiB ext4), both clean under
+  `e2fsck`; the rootfs copy uses 8.2 GiB.
+- Boot partition mirrored from the SD and `diff -r` reported identical; `initrd.img.orig` and the
+  boot files are in place.
+- Rootfs copied with `rsync -aHAXS` from a bind-mounted `/`; the mountpoint directories were created
+  explicitly; `e2fsck -fn` clean afterwards.
+- The cross-built InputPlumber (`needs_poll` version) was installed both in the running system and in
+  the eMMC copy.
+- The SD card was never written to.
+
+**One caveat remains.** `duo-init` resolves `findfs LABEL=STORAGE` and `LABEL=ROCKNIX`, and with
+both media carrying those labels it currently picks the **eMMC** (`/dev/mmcblk1p89`). That is fine
+for the internal boot, and an SD boot still works because it lands on the same (complete) rootfs,
+but it means the SD is not yet an *independent* rescue. `out/remote/fix-emmc-labels.sh` fixes this
+without touching the SD: the eMMC filesystem labels become `LINUXROOT`/`LINUXBOOT` (GPT names stay
+`ROCKNIX`/`STORAGE`, which is what the ABL matches) and the eMMC initrd is patched to look for them.
+It aborted midway once because this initrd's trailing padding makes `cpio` return non-zero after
+extracting everything; the script now tolerates that and verifies the entry list before repacking.
+
+## To finish (physical)
+
+1. Power off completely.
+2. Remove the microSD card.
+3. Power on holding **Volume Down**.
+4. In the ABL menu: *Boot mode* = **Linux**, *Boot source* = **internal**, then Start.
+
+If it does not come up: reinsert the SD, hold Volume Down, set *Boot source* = **SD Card**. The card
+still carries a complete, working system.
+
+## Verification after the first internal boot
+
+1. `findmnt /` → `/dev/mmcblk1p89`; `lsblk -o NAME,LABEL,PARTUUID` shows `STORAGE` on the eMMC.
+2. `out/remote/disk-bench.sh` → expect ~2.9k IOPS 4K QD1 and >300 MiB/s sequential.
+3. Boot Android from the ABL menu: it should reach setup with a fresh 32 GiB userdata.
+4. `systemd-analyze` and a Firefox cold start before/after, for the perceived-speed gain.
+
 
 ## If it goes wrong
 
