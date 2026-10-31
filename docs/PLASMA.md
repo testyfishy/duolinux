@@ -92,6 +92,26 @@ The trade-off, stated plainly: the panel no longer shows a percentage. The alter
 standalone applet showing icon + percentage, at the cost of a duplicate indicator. The default KDE
 tray was chosen.
 
+## Idle CPU budget
+
+Measured on the Lite with two panels lit and nothing running:
+
+| Process | Idle CPU | Notes |
+|---|---|---|
+| `inputplumber` | 11 % (17 % with a DualSense also paired) | upstream 0.82 behaviour: every source device is polled at ~1 kHz with non-blocking reads that mostly return `EAGAIN`. Confirmed identical with the stock `/usr/bin/inputplumber`, so it is not the fork patch. No poll-interval option exists in the CLI or schema. |
+| `duo-backkey` | 0.3 % | was 2.5 % with a fixed 5 ms tick; the tick is now 250 ms unless a stick is being integrated into scroll |
+| `duo-fan` | 1 % | 2 s poll of the hwmon sensors |
+| `plasmashell` | 0.1 % | with stock Kickoff + Icons-only Task Manager |
+| `kwin_wayland` | 0.1 % | |
+
+Overall the machine sits at ~93-95 % idle, with the little cluster at 300 MHz and the big cluster
+parked at its minimum when nothing polls. `schedutil` is the governor, `boost=0`, and both policies
+have `min=300 MHz`.
+
+The one remaining large item is InputPlumber. Reducing it means patching the source poll loop (4-8 ms
+instead of 1 ms) and rebuilding, which is a deliberate trade of input latency for battery; it is not
+a configuration change.
+
 ## Scripts
 
 - `out/remote/restore-stock-panel.py` - restore Kickoff + Icons-only Task Manager, dedupe, order.
