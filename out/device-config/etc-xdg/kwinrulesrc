@@ -1,18 +1,12 @@
 [General]
-rules=vboard
-count=1
+rules=vboard,desktop-skip-taskbar
+count=2
+rules=
+count=0
 
-[vboard]
-Description=vboard on the bottom panel
-Enabled=true
-wmclass=io.github.archisman-panigrahi.vboard
-wmclassmatch=1
-wmclasscomplete=false
-above=true
-aboverule=2
-acceptfocus=false
-acceptfocusrule=2
+[desktop-skip-taskbar]
+Description=Keep the desktop out of the task list
+types=2
+typesrule=2
 skiptaskbar=true
 skiptaskbarrule=2
-skippager=true
-skippagerrule=2
