@@ -38,7 +38,7 @@ KEY_F1 = 59
 KEY_HOME = 102
 KEY_F13 = 183
 KEY_F14 = 184
-KEY_F15 = 188
+KEY_F15 = 185
 BTN_SELECT = 314
 BTN_DPAD_LEFT = 544
 BTN_DPAD_RIGHT = 545
@@ -159,7 +159,10 @@ WINDOW_SHORTCUT = {
 
 
 def move_window(direction: str) -> None:
+    print(f"duo-backkey: window {direction}", flush=True)
     """Send the active window to the other panel.
+
+    print(f"duo-backkey: window {direction}", flush=True)
 
     KWin owns window placement; the supported way to move a window between
     outputs is its global shortcut, which kglobalaccel can invoke on our behalf.
@@ -172,6 +175,7 @@ def move_window(direction: str) -> None:
 
 
 def close_window() -> None:
+    print("duo-backkey: close window", flush=True)
     """Ask KWin to close the focused window (its 'Window Close' shortcut)."""
     subprocess.Popen(
         ["/usr/bin/qdbus6", "org.kde.kglobalaccel", "/component/kwin",
