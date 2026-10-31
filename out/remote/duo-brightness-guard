@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Keep the panel backlight above a floor.
+
+Plasma's brightness slider (which arrived with powerdevil) allows 0, which turns
+the backlight completely off -- on a handheld with no external keyboard that
+means losing the machine until you SSH in. This clamps the value to a readable
+minimum while still allowing dimming down to it.
+"""
+import glob
+import pathlib
+import time
+
+FLOOR_PERCENT = 12
+POLL = 5.0
+
+
+def clamp() -> None:
+    for device in glob.glob("/sys/class/backlight/*"):
+        try:
+            maximum = int(pathlib.Path(device, "max_brightness").read_text())
+            current = int(pathlib.Path(device, "brightness").read_text())
+        except (OSError, ValueError):
+            continue
+        floor = max(1, maximum * FLOOR_PERCENT // 100)
+        if current < floor:
+            try:
+                pathlib.Path(device, "brightness").write_text(str(floor))
+                print(f"brightness-guard: {device} {current} -> {floor}", flush=True)
+            except OSError:
+                pass
+
+
+def main() -> None:
+    while True:
+        clamp()
+        time.sleep(POLL)
+
+
+if __name__ == "__main__":
+    main()
