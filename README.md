@@ -1,8 +1,13 @@
 # DuoLinux
 
 Debian 13 (trixie) with a KDE Plasma 6.3 Wayland desktop on the **Retroid Pocket Duo Lite**
-dual-screen handheld (Qualcomm SM6125, Adreno 610). Linux runs from a microSD card and boots
-through a custom openABL; Android on internal storage is left intact.
+dual-screen handheld (Qualcomm SM6125, Adreno 610). Linux runs from the internal eMMC and boots
+through a custom openABL; Android on internal storage is left intact as a 32 GiB userdata, and a
+microSD card carries an independent rescue system.
+
+The kernel is our own build, **7.2.11-nf**: ROCKNIX's 79-patch SM6115 device series rebased onto
+the 7.2.11 stable tarball, with netfilter enabled so Tailscale runs in TUN mode. See
+[`docs/KERNEL.md`](docs/KERNEL.md) for how it is ported and verified.
 
 There is no physical keyboard. Input is the built-in gamepad (through
 [InputPlumber](https://github.com/ShadowBlip/InputPlumber)) and two touchscreens, so most of this
@@ -20,8 +25,9 @@ repo is about making a normal desktop usable with those.
 | Top screen | `DSI-1`, 1080x1920@60 (rotated), scale 1.75 → 1098x618 logical |
 | Bottom screen | `DP-1`, 1280x960@60, behind an Analogix DSI-to-DP bridge, scale 1.16667 → 1098x823 logical, placed below DSI-1 |
 | Input | built-in gamepad (via InputPlumber), two touch panels, no keyboard |
-| Boot | openABL from the ROCKNIX project, kernel + DTB from the ROCKNIX SM6115 tree |
-| Storage | Debian rootfs on the eMMC (69 GiB ext4, `LINUXROOT`); Android kept with a 32 GiB userdata |
+| Boot | openABL from the ROCKNIX project; `KERNEL` is our 7.2.11-nf `Image.gz` on a FAT partition, DTB loaded from the same partition |
+| Storage | Debian rootfs on the eMMC (70 GiB ext4, `LINUXROOT`); Android kept with a 32 GiB userdata; microSD is a self-contained rescue system |
+| Kernel | 7.2.11-nf, 280 modules in `/lib/modules/7.2.11-nf`, `KERNEL.720nf` and `KERNEL.720` kept for rollback |
 
 ## What is in this repository
 
@@ -35,9 +41,13 @@ repo is about making a normal desktop usable with those.
 | `out/overlay/` | USB-gadget networking, ssh self-heal and diagnostics units |
 | `out/wvkbd-0.15/` | Forked on-screen keyboard (GPLv3), see below |
 | `out/inputplumber-fork/` | Patch adding axis-to-wheel support to InputPlumber, plus publishing notes |
+| `toolkit/kernel/` | The kernel: port the SM6115 series to a new stable base, build it with netfilter, and every check used before and after installing (boot-critical built-ins, config diff, DTB compatibility, suspend, charging) |
 | `docs/` | Bring-up notes: boot chain, hardware map, build pipeline, status ledger |
+| `docs/KERNEL.md` | 7.2.11-nf: how the series is rebased, the one conflict and how it is resolved, how the port is proven, install and rollback |
+| `docs/SUSPEND.md` | Who really suspends on lid close, why PowerDevil does not, and how to prove a suspend is real rather than a blanked display |
+| `docs/EMMC.md` | Moving the rootfs to the eMMC beside a kept Android install |
 | `docs/PLASMA.md` | Plasma session: why plasmashell must run as a user unit, panel layout, battery |
-| `docs/TAILSCALE.md` | Why Tailscale cannot run on this kernel, and what the alternatives are |
+| `docs/TAILSCALE.md` | Tailscale: the netfilter requirement, what was missing on the stock kernel, and how it now runs in TUN mode |
 | `docs/CPU-GPU.md` | CPU/GPU driver stack, Turnip, energy-model and cluster-idle gaps |
 | `tests/` | Unit tests for the image/boot.img builders |
 
@@ -132,6 +142,17 @@ make            # needs wayland, pango/cairo, xkbcommon dev packages
 | `duo-kbd-settings` | On-screen keyboard size |
 | `duo-wifi` | Wi-Fi network picker |
 | `duo-scale`, `duo-display` | Output scale and layout |
+
+## Verified on the hardware
+
+| Area | Evidence |
+|---|---|
+| Boot from eMMC | Debian on `LINUXROOT`, 4K QD1 2,567 IOPS, 320 MiB/s sequential, 98 % idle |
+| Both panels | `DSI-1` + `DP-1` connected, correct layout and scale, 3/3 blank/unblank cycles |
+| Lid | close suspends (real sleep, 0 failures), open resumes, Wi-Fi drops and returns; idle never suspends |
+| Power | battery gauge, charger hot-plug, JEITA path, charging at ~1.7 A |
+| Kernel | 7.2.11-nf, 0 failed units, both remoteprocs running, audio card present |
+| Netfilter | `nft`, `iptables`, `ip rule`; Tailscale runs in TUN mode (needs approval on first use) |
 
 ## Status and known limitations
 
