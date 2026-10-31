@@ -51,8 +51,8 @@ export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/aarch64-linux-gnu/pkgconfig:$SYSROOT/
 export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include -I$SYSROOT/usr/include/aarch64-linux-gnu"
 export RUSTFLAGS="-C link-arg=-L$SYSROOT/usr/lib/aarch64-linux-gnu -C link-arg=-Wl,-rpath-link,$SYSROOT/usr/lib/aarch64-linux-gnu"
 # crates that compile C (hidapi) need the arm64 headers, not the host's.
+# cc-rs reads the underscore form of the target in the variable name.
 export CFLAGS_aarch64_unknown_linux_gnu="-I$SYSROOT/usr/include -I$SYSROOT/usr/include/aarch64-linux-gnu"
-export CFLAGS_aarch64-unknown-linux-gnu="-I$SYSROOT/usr/include -I$SYSROOT/usr/include/aarch64-linux-gnu"
 export CXXFLAGS_aarch64_unknown_linux_gnu="$CFLAGS_aarch64_unknown_linux_gnu"
 export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
 
