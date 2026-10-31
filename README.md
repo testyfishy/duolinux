@@ -150,8 +150,9 @@ make            # needs wayland, pango/cairo, xkbcommon dev packages
 
 ## Licence
 
-- **This project's own code** (toolkit, scripts, overlays, docs): copyright the DuoLinux author. See
-  [`LICENSE`](LICENSE).
+- **This project's own code** (toolkit, scripts, overlays, docs, the Duo Lite scripts in
+  `out/remote/`, `out/device-config/`): **MIT**, see [`LICENSE`](LICENSE). Use it, change it,
+  sell it, ship it — no permission needed.
 - **`out/wvkbd-0.15/`** is a modified copy of [wvkbd](https://git.sr.ht/~proycon/wvkbd),
   (c) 2020 John Sullivan and contributors, **GPLv3** (`LICENSE`, `COPYING`), with
   `os-compatibility.[ch]` under MIT/X (`COPYING_WESTON`). The changes are listed in
