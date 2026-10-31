@@ -116,6 +116,24 @@ All five rows are measured on the device, not predicted, by driving the control
 through `alsactl` and reading register 05 from both amps. The ACF blob agrees:
 all three of its register sections set register 05 to `0x800B`.
 
+**Verified end to end:** with the control at 1023 both amps report attenuation
+11 and status `0x0311` (PLL locked, clocks stable), and a full-scale 1 kHz tone
+is audible from the speakers.
+
+**Comparison with stock Android** (this was the missing step): Android's
+`mixer_paths.xml` contains *no* `SPK_*` or `AW88166` controls at all - the amps
+are driven entirely by its `aw883xx_dlkm.ko`. Disassembling that module shows
+the same arithmetic as upstream mainline:
+
+```
+real = min(control + vol.min_vol, vol.max_vol);
+```
+
+so Android's maximum also lands on attenuation 11. There is no mixer setting
+being left on the table; a loudness difference, if any, would come from the
+vendor's DSP calibration (`aw_cali_svc_cali_run_dsp_vol`, exposed here as the
+`Calib` control), not from the volume control.
+
 Mute, fade-in and fade-out keep their upstream attenuation semantics: the conversion happens only at
 the ALSA control boundary. An earlier attempt (`fix-aw88166-volume-v2.sh`) put the mapping inside
 `aw_dev_set_volume()`, which `fade_out()` calls with `MUTE_VOL` (1023) — that turned "mute" into the
