@@ -261,3 +261,20 @@ the scripting API, copying the first panel's applets in order
 (`marginsseparator, digitalclock, icontasks, kickoff, systemtray`) at the same
 height and alignment. `toolkit/apps/add-second-taskbar.sh` does this and is
 idempotent: it refuses to add a second panel to a screen that already has one.
+
+### Final taskbar layout
+
+| Screen | Edge | Height | Contents |
+|---|---|---|---|
+| DSI-1 (top) | bottom | 50 | start menu, clock, task list |
+| DP-1 (bottom) | **top** | 64 | start menu, system tray |
+
+Both bars carry the launcher, so either screen can reach it. The tray lives only
+on the bottom bar: with the task list gone from that bar each icon gets real
+spacing, and 64 px thickness makes the targets thumb-sized. The top bar keeps
+the clock and task list, which is what you read at a glance.
+
+Plasma's scripting API only appends widgets, so a panel's order is produced by
+removing all widgets and re-adding them in sequence. `toolkit/apps` has the
+scripts: `add-second-taskbar.sh` (idempotent), `split-taskbars.sh`,
+`add-kickoff-top.sh` and `taskbar-final.sh` (height).
