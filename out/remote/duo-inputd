@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Map the Retroid gamepad to keys, corrected for the Duo Lite's rotated pad.
+
+Observed on this unit:
+  * physical B reports BTN_SOUTH  -> must act as Escape ("back")
+  * physical A reports BTN_EAST   -> must act as Enter  ("select")
+  * the hat reports the d-pad rotated 90 degrees: pressing up/down lands on
+    ABS_HAT0X, pressing left/right lands on ABS_HAT0Y  -> axes swapped below.
+
+Every raw event is appended to /var/log/duo-input.log so the mapping can be
+re-derived without guessing again.
+"""
+from __future__ import annotations
+
+import select
+import sys
+import time
+
+LOG = "/var/log/duo-input.log"
+
+try:
+    import evdev
+    from evdev import ecodes
+except ImportError:
+    print("duo-inputd: python3-evdev is not installed", file=sys.stderr)
+    raise SystemExit(1)
+
+# Buttons. A/B are swapped relative to evdev's convention because of the
+# device's physical labelling + rotation.
+MAP = {
+    ecodes.BTN_SOUTH: ecodes.KEY_ESC,     # physical B -> back
+    ecodes.BTN_EAST: ecodes.KEY_ENTER,    # physical A -> select
+    ecodes.BTN_NORTH: ecodes.KEY_F2,
+    ecodes.BTN_WEST: ecodes.KEY_F1,
+    ecodes.BTN_TL: ecodes.KEY_F6,
+    ecodes.BTN_TR: ecodes.KEY_F7,
+    ecodes.BTN_TL2: ecodes.KEY_F8,
+    ecodes.BTN_TR2: ecodes.KEY_F9,
+    ecodes.BTN_START: ecodes.KEY_F10,     # home / launcher
+    ecodes.BTN_SELECT: ecodes.KEY_F11,    # on-screen keyboard
+    ecodes.BTN_MODE: ecodes.KEY_F12,
+    ecodes.BTN_THUMBL: ecodes.KEY_F5,
+    ecodes.BTN_THUMBR: ecodes.KEY_PAGEUP,
+    ecodes.BTN_DPAD_UP: ecodes.KEY_UP,
+    ecodes.BTN_DPAD_DOWN: ecodes.KEY_DOWN,
+    ecodes.BTN_DPAD_LEFT: ecodes.KEY_LEFT,
+    ecodes.BTN_DPAD_RIGHT: ecodes.KEY_RIGHT,
+}
+
+# Hat: axes are swapped (up/down arrives on X, left/right on Y).
+HAT = {
+    ecodes.ABS_HAT0X: {1: ecodes.KEY_DOWN, -1: ecodes.KEY_UP},
+    ecodes.ABS_HAT0Y: {1: ecodes.KEY_RIGHT, -1: ecodes.KEY_LEFT},
+}
+
+
+def log(msg: str) -> None:
+    try:
+        with open(LOG, "a") as f:
+            f.write(msg + "\n")
+    except OSError:
+        pass
+
+
+def find_device():
+    for path in evdev.list_devices():
+        try:
+            d = evdev.InputDevice(path)
+        except Exception:  # noqa: BLE001
+            continue
+        name = d.name.lower()
+        caps = d.capabilities(verbose=False)
+        keys = caps.get(ecodes.EV_KEY, [])
+        if "duo-inputd" in name:
+            continue
+        if "retroid" in name and ecodes.BTN_SOUTH in keys:
+            log(f"duo-inputd: choosing {d.path} {d.name!r}")
+            return d
+    return None
+
+
+def main() -> None:
+    dev = None
+    while dev is None:
+        dev = find_device()
+        if dev is None:
+            time.sleep(2)
+
+    log(f"duo-inputd: start on {dev.path} {dev.name!r}")
+    ui = evdev.UInput({ecodes.EV_KEY: sorted(set(MAP.values()))}, name="duo-inputd")
+    held: set[int] = set()
+    try:
+        dev.grab()
+    except Exception:  # noqa: BLE001
+        log("duo-inputd: could not grab (continuing)")
+    try:
+        while True:
+            r, _, _ = select.select([dev.fd], [], [], 5)
+            if not r:
+                continue
+            for e in dev.read():
+                if e.type == ecodes.EV_KEY and e.code in MAP:
+                    log(f"key {ecodes.bytype[ecodes.EV_KEY].get(e.code, e.code)} value={e.value}")
+                    ui.write(ecodes.EV_KEY, MAP[e.code], e.value)
+                    ui.syn()
+                elif e.type == ecodes.EV_ABS and e.code in HAT:
+                    log(f"abs {ecodes.bytype[ecodes.EV_ABS].get(e.code, e.code)} value={e.value}")
+                    key = HAT[e.code].get(e.value)
+                    if key and key not in held:
+                        held.add(key)
+                        ui.write(ecodes.EV_KEY, key, 1)
+                        ui.syn()
+                    elif not e.value:
+                        for k in HAT[e.code].values():
+                            if k in held:
+                                held.discard(k)
+                                ui.write(ecodes.EV_KEY, k, 0)
+                                ui.syn()
+    finally:
+        for k in list(held):
+            ui.write(ecodes.EV_KEY, k, 0)
+        ui.syn()
+        ui.close()
+
+
+if __name__ == "__main__":
+    main()

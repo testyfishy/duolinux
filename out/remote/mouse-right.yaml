@@ -1,0 +1,88 @@
+version: 1
+kind: DeviceProfile
+name: Duo mouse (right stick points, left stick scrolls)
+mapping:
+  - name: Right stick pointer
+    source_event:
+      gamepad:
+        axis:
+          name: RightStick
+    target_events:
+      - mouse:
+          motion:
+            speed_pps: 900
+
+  - name: Left stick scroll up
+    source_event:
+      gamepad:
+        axis:
+          name: LeftStick
+          direction: up
+          deadzone: 0.35
+    target_events:
+      - mouse:
+          button: WheelUp
+  - name: Left stick scroll down
+    source_event:
+      gamepad:
+        axis:
+          name: LeftStick
+          direction: down
+          deadzone: 0.35
+    target_events:
+      - mouse:
+          button: WheelDown
+  - name: Left stick scroll left
+    source_event:
+      gamepad:
+        axis:
+          name: LeftStick
+          direction: left
+          deadzone: 0.35
+    target_events:
+      - mouse:
+          button: WheelLeft
+  - name: Left stick scroll right
+    source_event:
+      gamepad:
+        axis:
+          name: LeftStick
+          direction: right
+          deadzone: 0.35
+    target_events:
+      - mouse:
+          button: WheelRight
+
+  - name: L1 left click
+    source_event:
+      gamepad:
+        button: LeftBumper
+    target_events:
+      - mouse:
+          button: Left
+  - name: R1 right click
+    source_event:
+      gamepad:
+        button: RightBumper
+    target_events:
+      - mouse:
+          button: Right
+
+  - name: L2 scroll left
+    source_event:
+      gamepad:
+        trigger:
+          name: LeftTrigger
+          deadzone: 0.3
+    target_events:
+      - mouse:
+          button: WheelLeft
+  - name: R2 scroll right
+    source_event:
+      gamepad:
+        trigger:
+          name: RightTrigger
+          deadzone: 0.3
+    target_events:
+      - mouse:
+          button: WheelRight

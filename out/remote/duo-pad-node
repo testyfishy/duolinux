@@ -1,0 +1,20 @@
+#!/bin/bash
+# InputPlumber hides physical gamepad nodes from userspace (so games do not see
+# a duplicate pad), which removes /dev/input/eventN for the built-in gamepad.
+# The node is still present in sysfs, so recreate it: the right stick is only
+# readable there, and it is what the scroll daemon needs.
+set -u
+for sysdir in /sys/class/input/event*; do
+    name=$(cat "$sysdir/device/name" 2>/dev/null || true)
+    [ "$name" = "Retroid Pocket Duo Lite Gamepad" ] || continue
+    node="/dev/input/$(basename "$sysdir")"
+    [ -e "$node" ] && continue
+    dev=$(cat "$sysdir/dev")
+    major=${dev%%:*}
+    minor=${dev##*:}
+    mknod "$node" c "$major" "$minor"
+    chown root:input "$node"
+    chmod 660 "$node"
+    echo "created $node ($major:$minor)"
+done
+exit 0

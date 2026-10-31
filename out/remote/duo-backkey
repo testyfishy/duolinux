@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""Duo pad daemon.
+
+Jobs that cannot be expressed in InputPlumber profiles:
+
+  * Back button (KEY_F1 on InputPlumber's virtual keyboard) toggles the
+    on-screen keyboard.
+  * Home button (KEY_HOME) runs a configurable action from /etc/duo/controller.json.
+  * Right stick scrolls. InputPlumber's profile schema has no wheel target
+    (MouseButton::WheelUp/Down translate to an empty event list), so the stick
+    is left unmapped and the wheel events are generated here instead.
+
+Two device quirks this code has to cope with, both measured on the hardware:
+
+  * InputPlumber hides the physical pad's nodes from userspace (so games do not
+    see a duplicate), which is why /dev/input/eventN has to be recreated by
+    duo-pad-node.service. The physical pad is the only place the right stick is
+    readable, because a profile that maps an axis consumes it.
+  * Axis ranges differ per device: the physical pad reports +/-850 for both
+    sticks, while the virtual DualSense reports 0..255 centred at 127. The range
+    is therefore queried per device with EVIOCGABS instead of being assumed.
+
+Wheel events are sent as hi-res (120 units per notch) plus the legacy event,
+which is what libinput and Qt use for smooth scrolling.
+"""
+import fcntl
+import json
+import os
+import struct
+import subprocess
+import sys
+import time
+
+EV_KEY = 0x01
+EV_ABS = 0x03
+KEY_F1 = 59
+KEY_HOME = 102
+ABS_RX = 3
+ABS_RY = 4
+
+DEBOUNCE = 0.4
+SCROLL_DEADZONE = 0.32
+SCROLL_INTERVAL = 0.05       # seconds between notches while the stick is held
+HI_RES_STEP = 120            # libinput units per wheel notch
+TICK = 0.02
+
+PAD = "Retroid Pocket Duo Lite Gamepad"
+DUALSENSE = "Sony Interactive Entertainment DualSense Wireless Controller"
+WATCHED = (
+    "InputPlumber Keyboard",
+    "duo-on-screen keyboard",
+    PAD,
+    DUALSENSE,
+)
+
+CONFIG = "/etc/duo/controller.json"
+SCROLL_DIRECTION = "/etc/duo/scroll-direction"
+
+_mouse = None
+_meta = None
+_direction_cache: tuple[float, bool] = (0.0, True)
+
+
+def natural_scroll() -> bool:
+    """True when pushing the stick up scrolls up (the default)."""
+    global _direction_cache
+    try:
+        mtime = os.stat(SCROLL_DIRECTION).st_mtime
+    except OSError:
+        return True
+    cached_mtime, cached_value = _direction_cache
+    if mtime == cached_mtime:
+        return cached_value
+    try:
+        with open(SCROLL_DIRECTION) as handle:
+            value = handle.read().strip().lower() not in ("standard", "inverted", "off")
+    except OSError:
+        value = True
+    _direction_cache = (mtime, value)
+    return value
+
+
+def eviocgabs(code: int) -> int:
+    return (2 << 30) | (24 << 16) | (0x40 + code) | (ord("E") << 8)
+
+
+def axis_range(fd: int, code: int) -> tuple[float, float]:
+    """Return (centre, half_range) for one axis of an already-open device."""
+    buf = bytearray(24)
+    try:
+        fcntl.ioctl(fd, eviocgabs(code), buf)
+    except OSError:
+        return 0.0, 1.0
+    _value, minimum, maximum, *_rest = struct.unpack("6i", bytes(buf))
+    centre = (minimum + maximum) / 2.0
+    half = (maximum - minimum) / 2.0
+    return centre, (half if half else 1.0)
+
+
+def device_paths() -> dict[str, str]:
+    found: dict[str, str] = {}
+    name = None
+    for line in open("/proc/bus/input/devices"):
+        line = line.strip()
+        if line.startswith("N: Name="):
+            name = line.split("=", 1)[1].strip().strip('"')
+        elif line.startswith("H: Handlers=") and name in WATCHED:
+            for handler in line.split("=", 1)[1].split():
+                if handler.startswith("event"):
+                    found[f"/dev/input/{handler}"] = name
+                    break
+    return found
+
+
+def session_env() -> dict:
+    env = os.environ.copy()
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    env.setdefault("WAYLAND_DISPLAY", "wayland-0")
+    return env
+
+
+def toggle_keyboard() -> None:
+    subprocess.Popen(["/usr/local/bin/duo-osk", "toggle"], env=session_env(),
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def home_action() -> str:
+    try:
+        with open(CONFIG) as handle:
+            return json.load(handle).get("home", "launcher")
+    except (OSError, ValueError):
+        return "launcher"
+
+
+def press_super() -> None:
+    """Plasma binds the application launcher to the Meta key alone."""
+    global _meta
+    try:
+        import uinput
+    except ImportError:
+        return
+    if _meta is None:
+        _meta = uinput.Device([uinput.KEY_LEFTMETA], name="duo-home-key")
+    _meta.emit_click(uinput.KEY_LEFTMETA)
+
+
+def handle_home() -> None:
+    action = home_action()
+    if action == "launcher":
+        press_super()
+    elif action == "keyboard":
+        toggle_keyboard()
+
+
+def wheel(vertical: bool, notches: int) -> None:
+    global _mouse
+    if notches == 0:
+        return
+    try:
+        import uinput
+    except ImportError:
+        return
+    if _mouse is None:
+        try:
+            _mouse = uinput.Device(
+                [uinput.REL_WHEEL, uinput.REL_HWHEEL,
+                 uinput.REL_WHEEL_HI_RES, uinput.REL_HWHEEL_HI_RES],
+                name="duo-scroll")
+        except Exception as exc:            # noqa: BLE001 - never die on this
+            print(f"duo-backkey: wheel device unavailable: {exc}", flush=True)
+            return
+    if vertical:
+        _mouse.emit(uinput.REL_WHEEL_HI_RES, notches * HI_RES_STEP, syn=False)
+        _mouse.emit(uinput.REL_WHEEL, notches, syn=False)
+    else:
+        _mouse.emit(uinput.REL_HWHEEL_HI_RES, notches * HI_RES_STEP, syn=False)
+        _mouse.emit(uinput.REL_HWHEEL, notches, syn=False)
+    _mouse.syn()
+
+
+def main() -> int:
+    handles: dict[str, int] = {}
+    names: dict[str, str] = {}
+    ranges: dict[str, tuple[float, float, float, float]] = {}
+    sticks: dict[str, list[int]] = {}
+    last_key = 0.0
+    last_scroll = 0.0
+
+    while True:
+        for path, name in device_paths().items():
+            if path in handles:
+                continue
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+            except OSError:
+                continue
+            handles[path] = fd
+            names[path] = name
+            cx, hx = axis_range(fd, ABS_RX)
+            cy, hy = axis_range(fd, ABS_RY)
+            ranges[path] = (cx, hx, cy, hy)
+            sticks[path] = [None, None]        # [x_raw, y_raw]
+            print(f"duo-backkey: listening on {name} ({path}) "
+                  f"x={ranges[path][0]:.0f}+-{hx:.0f} y={cy:.0f}+-{hy:.0f}",
+                  flush=True)
+
+        if not handles:
+            time.sleep(2)
+            continue
+
+        for path, fd in list(handles.items()):
+            try:
+                data = os.read(fd, 24 * 128)
+            except BlockingIOError:
+                continue
+            except OSError:
+                os.close(fd)
+                del handles[path]
+                continue
+            for offset in range(0, len(data) - 23, 24):
+                _s, _u, kind, code, value = struct.unpack(
+                    "@llHHi", data[offset:offset + 24])
+                if kind == EV_ABS:
+                    if code == ABS_RY:
+                        sticks[path][1] = value
+                    elif code == ABS_RX:
+                        sticks[path][0] = value
+                elif kind == EV_KEY and value == 1:
+                    now = time.time()
+                    if now - last_key < DEBOUNCE:
+                        continue
+                    if code == KEY_F1:
+                        last_key = now
+                        toggle_keyboard()
+                    elif code == KEY_HOME:
+                        last_key = now
+                        handle_home()
+
+        # Prefer the physical pad; the DualSense copy is a fallback only, so a
+        # single stick movement can never produce double scrolling.
+        source = next((p for p, n in names.items()
+                       if n == PAD and p in sticks), None)
+        if source is None:
+            source = next((p for p, n in names.items()
+                           if n == DUALSENSE and p in sticks), None)
+
+        now = time.time()
+        if source and now - last_scroll >= SCROLL_INTERVAL:
+            cx, hx, cy, hy = ranges[source]
+            raw_x, raw_y = sticks[source]
+            vertical = 0.0 if raw_y is None else (raw_y - cy) / hy
+            horizontal = 0.0 if raw_x is None else (raw_x - cx) / hx
+            vertical = max(-1.0, min(1.0, vertical))
+            horizontal = max(-1.0, min(1.0, horizontal))
+            if abs(vertical) > SCROLL_DEADZONE:
+                last_scroll = now
+                notches = 1 if abs(vertical) < 0.8 else 2
+                # The pad reports "stick up" as a positive axis value, and a
+                # negative REL_WHEEL is what scrolls content up. Natural means
+                # stick up => scroll up.
+                if natural_scroll():
+                    signed = -notches if vertical > 0 else notches
+                else:
+                    signed = notches if vertical > 0 else -notches
+                wheel(True, signed)
+            elif abs(horizontal) > SCROLL_DEADZONE:
+                last_scroll = now
+                wheel(False, -1 if horizontal < 0 else 1)
+
+        time.sleep(TICK)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

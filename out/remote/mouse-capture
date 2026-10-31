@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Log pointer/scroll events from every device for 60 s.
+
+Tells us whether InputPlumber is producing mouse motion and wheel events at all,
+which separates "the mapping is wrong" from "the compositor is ignoring them".
+"""
+import os
+import select
+import struct
+import time
+
+EV_REL, EV_ABS, EV_KEY = 2, 3, 1
+
+NAMES = {}
+name = None
+for line in open("/proc/bus/input/devices"):
+    line = line.strip()
+    if line.startswith("N: Name="):
+        name = line.split("=", 1)[1].strip().strip('"')
+    elif line.startswith("H: Handlers="):
+        for handler in line.split("=", 1)[1].split():
+            if handler.startswith("event"):
+                NAMES[f"/dev/input/{handler}"] = name
+
+SKIP = ("Touchscreen", "haptics", "pwrkey", "resin", "Headset")
+handles = {}
+for path, dev in NAMES.items():
+    if any(s in dev for s in SKIP):
+        continue
+    try:
+        handles[path] = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        pass
+
+CODES = {0: "REL_X", 1: "REL_Y", 8: "REL_WHEEL", 6: "REL_HWHEEL",
+         11: "REL_WHEEL_HI_RES", 12: "REL_HWHEEL_HI_RES"}
+
+print(f"watching {len(handles)} devices for 60 s", flush=True)
+deadline = time.time() + 60
+with open("/tmp/mouse-capture.log", "a") as out:
+    out.write("\n=== mouse capture\n")
+    while time.time() < deadline:
+        readable, _, _ = select.select(list(handles.values()), [], [], 0.5)
+        for fd in readable:
+            path = next(p for p, f in handles.items() if f == fd)
+            try:
+                data = os.read(fd, 24 * 128)
+            except OSError:
+                continue
+            for off in range(0, len(data) - 23, 24):
+                _s, _u, kind, code, value = struct.unpack("@llHHi", data[off:off + 24])
+                if kind == EV_REL:
+                    line = f"REL  {NAMES[path][:30]:30} {CODES.get(code, code):14} {value}"
+                elif kind == EV_ABS and code in (0, 1):
+                    line = f"ABS  {NAMES[path][:30]:30} {code}              {value}"
+                elif kind == EV_KEY and value == 1:
+                    line = f"KEY  {NAMES[path][:30]:30} {code}              press"
+                else:
+                    continue
+                out.write(line + "\n")
+                out.flush()
+                print(line, flush=True)
+    out.write("=== end\n")
