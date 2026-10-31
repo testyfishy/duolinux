@@ -106,9 +106,15 @@ makes the loudest reachable setting the profile's own default, so 0 dB stays unr
 
 | Control | Attenuation | Level |
 |---|---|---|
-| 0 | 1023 | silence (-128 dB) |
-| 512 | ~518 | about half way |
-| 1023 | 12 | the vendor's design point (-1.5 dB) |
+| 0 | 1023 | silence |
+| 256 | 770 | |
+| 512 | 517 | about half way |
+| 767 | 265 | |
+| 1023 | 11 | the vendor's design point (-1.4 dB) |
+
+All five rows are measured on the device, not predicted, by driving the control
+through `alsactl` and reading register 05 from both amps. The ACF blob agrees:
+all three of its register sections set register 05 to `0x800B`.
 
 Mute, fade-in and fade-out keep their upstream attenuation semantics: the conversion happens only at
 the ALSA control boundary. An earlier attempt (`fix-aw88166-volume-v2.sh`) put the mapping inside

@@ -48,6 +48,8 @@ sleep 0.5
 echo "  recorder: $(stat -c %s /tmp/lb.wav 2>/dev/null || echo missing) bytes"
 echo "  player:   $(cat /tmp/play.log | tail -1)"
 echo "  amp during: L=$(timeout 3 grep -E '^05:' /sys/kernel/debug/regmap/0-0035/registers | awk '{print $2}')"
+echo "  DMIC pair-1 clock (0xC4): $(timeout 3 grep -E '^0c4:' /sys/kernel/debug/regmap/a460000.codec-tx_macro/registers | awk '{print $2}')"
+echo "  DMIC pair-0 clock (0xC0): $(timeout 3 grep -E '^0c0:' /sys/kernel/debug/regmap/a460000.codec-tx_macro/registers | awk '{print $2}')"
 
 echo
 "$PY" - <<'PY'
