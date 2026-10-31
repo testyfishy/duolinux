@@ -1,37 +1,21 @@
-DuoLinux - licence notes
-========================
+MIT License
 
-1. This project's own work
-   (toolkit/, configs/, overlay/, tests/, docs/, out/remote/, out/overlay/,
-   out/abl/*.sh, out/patch/, the top-level scripts and README)
+Copyright (c) 2026 The DuoLinux authors
 
-   Copyright (c) 2026 the DuoLinux author. All rights reserved until a licence
-   is chosen.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-   >>> ACTION BEFORE PUBLISHING: pick a licence and replace this section with
-   >>> its text. An earlier version of README.md stated "Tooling and overlay:
-   >>> MIT"; if that is still the intent, put the MIT licence text here.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-2. Third-party code included in this repository (licences unchanged)
-
-   out/wvkbd-0.15/   wvkbd 0.15, modified.
-                     Copyright (c) 2020 John Sullivan <jsullivan@csumb.edu>
-                     and contributors. GNU GPL v3.0 - see out/wvkbd-0.15/LICENSE
-                     and COPYING. os-compatibility.[ch]: MIT/X, see
-                     out/wvkbd-0.15/COPYING_WESTON.
-                     Modifications: out/wvkbd-0.15/NOTICE.duolinux (GPLv3).
-
-   out/vboard-fork/  Vboard, modified, reference only (not deployed).
-                     Copyright (c) 2025 mdev588,
-                     Copyright (c) 2026 Archisman Panigrahi.
-                     GNU GPL v3.0 - see out/vboard-fork/LICENSE and
-                     out/vboard-fork/NOTICE.duolinux.
-
-   Those directories must keep their licence files and copyright notices
-   when redistributed. Section 1 does not apply to them.
-
-3. Not included
-
-   The Linux kernel (GPL-2.0), firmware blobs, openABL, InputPlumber and
-   Debian packages are fetched from their upstreams at build or install time
-   and are not redistributed in this repository.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
