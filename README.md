@@ -9,6 +9,11 @@ The kernel is our own build, **7.2.11-nf**: ROCKNIX's 79-patch SM6115 device ser
 the 7.2.11 stable tarball, with netfilter enabled so Tailscale runs in TUN mode. See
 [`docs/KERNEL.md`](docs/KERNEL.md) for how it is ported and verified.
 
+> **Finished hobby port.** It works as described below and is built for one
+> device. There is no active maintenance; current state and known limits are in
+> [`docs/STATE.md`](docs/STATE.md), and what would need help is in
+> [`docs/HELP-WANTED.md`](docs/HELP-WANTED.md).
+
 There is no physical keyboard. Input is the built-in gamepad (through
 [InputPlumber](https://github.com/ShadowBlip/InputPlumber)) and two touchscreens, so most of this
 repo is about making a normal desktop usable with those.
