@@ -14,6 +14,9 @@ the 7.2.11 stable tarball, with netfilter enabled so Tailscale runs in TUN mode.
 > known limits are in
 > [`docs/STATE.md`](docs/STATE.md), and what would need help is in
 > [`docs/HELP-WANTED.md`](docs/HELP-WANTED.md).
+>
+> **On hold as of 2026-11-01.** The device works and boots from the internal
+> eMMC, but I have paused active work. Issues and PRs may sit for a while.
 
 There is no physical keyboard. Input is the built-in gamepad (through
 [InputPlumber](https://github.com/ShadowBlip/InputPlumber)) and two touchscreens, so most of this
