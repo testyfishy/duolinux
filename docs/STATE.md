@@ -3,6 +3,34 @@
 One page, current as of the last commit. Everything here was measured on a
 Pocket Duo Lite, not inferred. Deep detail is linked per row.
 
+## On hold (2026-11-01)
+
+Work is paused, not abandoned. Nothing is half-installed and nothing is
+uncommitted; the device and the repo are both in a state that boots and builds.
+
+Where things were left:
+
+- **Device.** Booted from the SD rescue card. The eMMC kernel was restored after
+  the Venus experiment: `KERNEL.prev` (14,079,961 B) was copied back over
+  `KERNEL`, so the eMMC holds the last known-good build. That restore has **not
+  been boot-tested** - first thing to do on resume is boot the eMMC and check
+  `dmesg | grep -c venus` matches the old clean probe.
+- **Venus: do not repeat the AR50_LITE attempt.** Switching `sm6125_res` to
+  `VPU_VERSION_AR50_LITE` with `qcom/venus-6.0/venus.mbn` wedges the bus: no
+  ping, no SSH, hang instead of a probe error. The safe state is the AR50
+  resource set, where the driver binds, the nodes register, and the core simply
+  never powers on. The real fix needs the vendor `videocc` table.
+- **Rescue backup exists.** `toolkit/rescue/` has `usb-backup.sh`,
+  `finish-backup-copy.sh` and `eject-usb.sh`. A backup was taken to a USB drive
+  in `duo-backup-20261031-1935/`: eMMC boot partition, SD boot partition, and
+  the rescue rootfs, with a `MANIFEST.txt` of restore commands. The USB copy is
+  complete; the local copy on the PC has all but `sd-rootfs.tar.zst`, which
+  stopped at 2.17 GB of 3.32 GB when the link dropped.
+- **No release was published.** `v0.1` is still unbuilt. When it happens it must
+  ship the `.audio` DTB, never the Venus one.
+- **Waiting on Retroid.** The email went to `linux_support@goretroid.com`; the
+  microphone clock and speaker loudness both end there. No reply yet.
+
 ## Subsystems
 
 | Subsystem | Status | Why / what blocks it | Detail |
