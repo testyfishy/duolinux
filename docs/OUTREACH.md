@@ -1,104 +1,93 @@
-# Asking Retroid (and ROCKNIX) for the Duo Lite data
+# Reaching out about the Duo Lite
 
-## How to reach them
+## What can and cannot be sent from here
 
-- **GitHub issues are disabled** on `RetroidPocket/linux` and on ROCKNIX's
-  `distribution` repo (`has_issues: false`), so an issue cannot be opened. The
-  only GitHub route would be a pull request, which is not appropriate for a
-  question.
-- Realistic channels: Retroid support email (`support@goretroid.com`) and the
-  Retroid/ROCKNIX Discord. ROCKNIX also has a Discord and no issue tracker.
+- **I cannot send anything**: no mail account, and both vendor repos have
+  **issues and discussions disabled** (`RetroidPocket/linux`,
+  `ROCKNIX/distribution`). Only pull requests are open, and a PR that contains
+  nothing but a question reads as spam.
+- So the message below is drafted for **you** to send - by email to Retroid, or
+  pasted into a PR description if you prefer that route.
 
-## What we already have
+## Asking Retroid (enthusiast tone, not legal)
 
-- The complete SM6115 ROCKNIX port working on the Duo Lite: both panels,
-  touch, Wi-Fi, Bluetooth, suspend/lid, fan, chargers, audio playback, the
-  on-screen keyboard, gamepad mapping, streaming, and a published 79-patch
-  kernel series (`kernel/patches/7.2.11/`).
-- Evidence that the microphone works in stock Android and that its supply is
-  the codec's MIC BIAS1, but that mainline never clocks it.
-- A measured speaker/amp analysis: the AW88166s are at their profile maximum,
-  and the loudness difference from Android is DSP-side, not mixer-side.
-- A Venus video port mid-flight: clock driver, DTS, DTB and driver resources in
-  place; the core still does not power up.
+The tone matters: this is an owner of their hardware asking for configuration
+values, not a licence demand. The kernel source is public; what is genuinely
+useful and not published is the **device-specific configuration** (device trees,
+ACDB calibration, DMIC/videocc wiring).
 
-## Draft message
-
-> Subject: Retroid Pocket Duo Lite (SM6125) - mainline Linux progress and a
-> request for the board's audio/video configuration
+> Subject: Pocket Duo Lite (SM6125) - mainline Linux progress, and a request for
+> the board's audio/video configuration
 >
 > Hello,
 >
-> I have been running mainline Linux on the Pocket Duo Lite (the SM6125 /
-> QCS6125 model, not the QCS8550 "eliza" Duo) and have most of it working on a
-> 7.2.11 kernel: both panels and touch, Wi-Fi, Bluetooth, suspend via the hall
-> sensor, fan control, chargers, gamepad input, an on-screen keyboard, and
-> audio playback. The kernel patch series is published at
-> <https://github.com/testyfishy/duolinux> together with the investigation
-> notes.
+> I own a Pocket Duo Lite and have been running mainline Linux on it for a
+> while - 7.2.11, with both panels and touch, Wi-Fi, Bluetooth, lid suspend,
+> fan control, chargers, gamepad input, an on-screen keyboard and audio
+> playback all working. I have published the patch series and my notes at
+> <https://github.com/testyfishy/duolinux>; the Duo's `linux` and
+> `alsa-ucm-conf` repos were genuinely useful along the way.
 >
-> Three things remain, and your own data would save a lot of guesswork:
+> Three things are left, and I suspect your own device configuration would
+> answer them faster than I can reverse-engineer from the firmware:
 >
-> 1. **Microphone.** It records correctly in the shipped Android build, so the
->    hardware and its supply are fine. In mainline the LPASS TX macro's DMIC
->    clock is never enabled (`SWR_DMICn_CTL` stays at its reset value, bit 0 is
->    read-only status). Android appears to clock it through the vendor's
->    bolero clock-resource layer. Could you share the `sound` node and the
->    DMIC/VA-macro configuration from the Duo Lite's Android device tree, or
->    confirm which macro and which DMIC pair the on-board microphone is wired
->    to?
-> 2. **Speaker level.** The two AW88166 amps are working and at their
->    profile maximum (attenuation register 05 = 11), yet the same content is
->    much louder in Android. Android's mixer sets no amp controls and its
->    driver uses the same volume arithmetic, so the difference must be in the
->    ADSP. Is there an ACDB calibration or COPP setting for the speaker path
->    that we should reproduce?
-> 3. **Video.** We are bringing up Venus on SM6125: `videocc@5b00000`, a
->    `qcom,sm6125-venus` resource set modelled on sc7180, and the IOMMU
->    stream IDs from the vendor device tree. The driver binds and creates
->    decoder/encoder nodes, but the core never powers (both GDSCs stay off).
->    If you have the SM6125 `videocc` configuration or the correct stream IDs,
->    that would likely finish it.
+> 1. **Microphone.** It works in the shipped Android build, so the hardware is
+>    fine, but in mainline the LPASS TX macro's DMIC clock is never enabled.
+>    Could you share the `sound` node and DMIC configuration from the Duo
+>    Lite's Android device tree, or confirm which macro and DMIC pair the
+>    on-board microphone uses?
+> 2. **Speaker level.** The two AW88166 amps work and are at their profile
+>    maximum, but the same content is much louder in Android. I found
+>    `/vendor/etc/acdbdata/QRD/*.acdb` on the device - is there a calibration
+>    or COPP setting for the speaker path that I should be reproducing in
+>    Linux?
+> 3. **Video.** I am bringing up Venus on SM6125 (`videocc@5b00000`, a
+>    `qcom,sm6125-venus` resource set, the vendor's IOMMU stream IDs). The
+>    driver binds and creates decoder/encoder nodes, but the core never powers
+>    up. If the SM6125 `videocc` configuration is something you can share, that
+>    would probably finish it.
 >
-> I am happy to share everything I have - the patch series, the register dumps,
-> and the notes - and to test anything you can point me at. I am not asking for
-> vendor blobs, just the configuration values that are already in your device
-> trees.
+> I would be glad to test anything you point me at, and to share the register
+> dumps and notes in return. I am only after configuration values that are
+> already in your trees - not firmware blobs.
 >
-> Thank you for publishing the `RetroidPocket/linux` and `alsa-ucm-conf` repos;
-> the Duo's DTS and UCM were genuinely useful for this work.
+> Thanks for publishing the Linux repos and for keeping the Duo Lite
+> repairable.
 
-## Notes before sending
+Send to Retroid support (`support@goretroid.com`) or post as the body of a PR
+framed as "documentation: notes from mainline bring-up" if that feels more
+natural.
 
-- Do not include the Windows username, LAN addresses or keys; the repo is
-  public and scrubbed, keep the message the same.
-- Link the published repo and the two docs (`docs/MICROPHONE.md`,
-  `docs/SPEAKERS-NEXT.md`) rather than pasting dumps.
-- For the SM6125 question specifically, ask for the *Duo Lite* configuration:
-  "eliza" is the QCS8550 Duo and its files do not describe our board.
+## Asking linux-arm-msm
 
-## Ranked plan (advisor, 2026-10-31)
+Searched: there is **no existing thread** on SM6125 videocc or DMIC clocking to
+reply to, so a cold question would be exactly the "knocking on doors" you want
+to avoid. What is expected there is a **patch series with a cover letter**, not
+a question. The practical order:
 
-1. **Extract from our own device first.** The Android vendor partition is still
-   mountable (offset 0xc5000000 of super) and holds what we need:
-   - /vendor/etc/acdbdata/QRD/*.acdb - the ADSP calibration Android applies
-     (Handset, Global, Headset, General, Bluetooth). This is where the speaker
-     loudness difference lives; mainline q6asm never loads ACDB.
-   - /vendor/etc/audio_platform_info.xml, mixer_paths*.xml - already pulled.
-   - The vendor device trees are already extracted in ~/android-images/`n     (endor_boot_a/dtb-01.dts has the real sound, venus and videocc nodes).
-2. **#linux-msm (OFTC) or linux-arm-msm** for the two SoC-level gaps: the
-   DMIC clock and the videocc GDSC that never leaves off. Ask with logs and
-   the downstream node values, as an RFC patch rather than a bare question.
-   SM6125 upstream came from SoMainline (Marijn Suijten, Martin Botka,
-   Lux Aliaga), so those names are the right audience.
-3. **ROCKNIX gets a real pull request**, not a question: add the Duo Lite device
-   to their tree in their own layout (DTS + minimal patches), one device per
-   PR, rebased, with a what-works/what-does-not table and a link here.
-4. **Retroid gets a GPL source request**, not a question: ask for the complete
-   corresponding source of the kernel in their firmware, including
-   techpack/audio-kernel and the device trees. That is an obligation, not a
-   favour. Do not open PRs against their mirror.
-5. Never open a PR that only contains a question.
+1. Finish the videocc driver so it is a clean patch (it already compiles).
+2. Write the cover letter as: what works, what does not, the exact evidence
+   (`venus_gdsc off-0`, `video_cc_venus_clk_src` never enabled, reset -ETIMEDOUT,
+   the vendor node from `dtb-01.dts`), and the question embedded as "what is the
+   correct SM6125 videocc table?".
+3. Only then post to `linux-arm-msm@vger.kernel.org`.
 
-Speaker loudness does **not** go to mainline - it is vendor ADSP calibration.
+That way the first contact is a contribution with a specific question, which is
+what maintainers expect and answer.
 
+## Why the ACDB thing is not simply "fixed"
+
+The `/vendor/etc/acdbdata/QRD/*.acdb` files are a **closed binary calibration
+database consumed by the ADSP firmware**, not a config file. Android's HAL
+loads the relevant calibration into the DSP's COPP stage, which applies
+equalisation, multiband compression and a limiter - that is where the extra
+perceived loudness comes from.
+
+Mainline's `q6asm` frontend never loads ACDB and exposes no COPP parameters, so
+there is nothing to point at the files. Reproducing it means either implementing
+ACDB/COPP in the kernel (a feature, not a setting) or doing the equivalent
+processing in userspace - and the userspace route is blocked here because this
+PipeWire build cannot host LV2 filter nodes (recorded in
+`docs/SPEAKERS-NEXT.md`).
+
+So it is not a switch that was missed; it is a missing processing stage.
