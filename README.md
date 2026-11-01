@@ -17,6 +17,25 @@ repo is about making a normal desktop usable with those.
 > toolkit still describe that. The device now runs Plasma, and the scripts in `out/remote/` are
 > what is actually deployed.
 
+## Where it stands, and where I'd love help
+
+This is a **fun project**. I love this little dual-screen handheld, and I want it
+to be a genuinely good Linux machine rather than a proof of concept - every
+feature in this repo runs on my own device, and the gaps below are the reason it
+is public. If you know Qualcomm audio or video, any of these would be a real
+gift.
+
+| Area | State | What would settle it |
+|---|---|---|
+| **Microphone** | Powered and routed, but the LPASS DMIC clock is never enabled, so capture stays silent | the board's DMIC wiring, or a working mainline clock sequence |
+| **Speaker level** | Works, but quieter than stock Android; both amps are already at their profile maximum | the ADSP calibration Android applies (`acdbdata`) |
+| **Volume slider** | Does nothing: the card's `ELEM_INFO` is broken, so PipeWire cannot drive the amp | a fix for the ALSA control path |
+| **Hardware video (Venus)** | Clock driver, DTS and DTB in place; decoder/encoder nodes register, but the core never powers up | the correct SM6125 `videocc` table and IOMMU stream IDs |
+
+The measurements behind each row, and what has already been ruled out, are in
+[`docs/HELP-WANTED.md`](docs/HELP-WANTED.md). What I have asked the vendor for is
+in [`docs/OUTREACH.md`](docs/OUTREACH.md).
+
 ## Hardware at a glance
 
 | Part | Details |
@@ -158,75 +177,6 @@ make            # needs wayland, pango/cairo, xkbcommon dev packages
 | Power | battery gauge, charger hot-plug, JEITA path, charging at ~1.7 A |
 | Kernel | 7.2.11-nf, 0 failed units, both remoteprocs running, audio card present |
 | Netfilter | `nft`, `iptables`, `ip rule`; Tailscale runs in TUN mode (needs approval on first use) |
-
-## Help wanted
-
-These are the open problems worth another pair of eyes. Each entry separates
-what is *proven on the hardware* from what is suspected, so a patch can be
-judged instead of guessed.
-
-### 1. No PDM clock reaches the microphone
-
-See [`docs/MICROPHONE.md`](docs/MICROPHONE.md).
-
-- **Proven:** the mic is powered (the `TX DMIC2 -> MIC BIAS1` route turns
-  `MIC BIAS1` on), the pads are muxed (`gpio127/128` = `dmic1_clk/data`), the
-  decimator runs (`0x0400`: `0x04 -> 0x24` during capture), and the capture path
-  and transcription work.
-- **Missing:** the data line only ever yields a slow DC wander. The TX macro's
-  `SWR_DMICn_CTL` is never programmed (`0x0E`), and its bit 0 is read-only
-  *status*, not an enable.
-- **Android reference:** `bolero_dmic_clk_enable` in `bolero_cdc_dlkm.ko` writes
-  the **VA macro** DMIC registers (`0x3084/0x3088/0x308c/0x3090`, enable bits
-  `1/2/4/8`). Writing those plus both macros' MCLK by hand still produces no
-  audio.
-- **Would settle it:** the vendor audio-kernel source
-  (`vendor/qcom/opensource/audio-kernel`, named in the module's own debug
-  strings) read against this build, or a known-good mainline sequence from
-  another SM6125/SM6115 board that has a working DMIC.
-
-### 2. Speakers much quieter than stock Android
-
-See the speaker section of [`docs/HARDWARE.md`](docs/HARDWARE.md).
-
-- **Proven:** the volume ladder tracks register 05 exactly
-  (0→1023, 256→770, 512→517, 767→265, 1023→11), the amps report `0x0311`
-  (PLL locked, clocks stable), the codec's digital volumes are 0 dB, the speaker
-  switches are on, and PipeWire's sink is at 1.00.
-- **Suspected:** the vendor profile load / DSP speaker protection applies gain
-  that our driver does not. `aw883xx_dlkm.ko` keeps full symbols.
-- **Would settle it:** dump every register the vendor driver writes at profile
-  load and at volume set, and diff that against ours at the same volume.
-
-### 3. `pa stop check fail:0x0330` on every stop
-
-Both AW88166 amps log this whenever playback stops (playback itself works).
-The interrupt status is not clean after a stop; suspected I2S-stop ordering or
-profile teardown in `sound/soc/codecs/aw88166.c`.
-
-### 4. `amixer` aborts on this card
-
-`amixer -c0 cget/cset <any numid except 1>` dies with
-`control.c:427: snd_ctl_elem_info` (rc 134), while `alsactl` works because it
-uses `ELEM_READ`. That points at a kernel-side `ELEM_INFO` failure on this card
-(TLV or `snd_soc` info path). All tooling here drives controls through a stored
-`alsactl` state file as a workaround; a proper diagnosis is welcome.
-
-### 5. Amp volume-control semantics upstream
-
-The upstream `aw88166` control *adds* attenuation, so the ALSA maximum mutes the
-amp and PipeWire's 100 % is silence. We invert the mapping locally
-(`toolkit/kernel/fix-aw88166-volume-v3.sh`). ROCKNIX fixed the same class of bug
-for SM4450; agreeing on one upstream shape would be better than three forks.
-
-### Also open
-
-- **Repository history** still contains a Windows username in early commits.
-  Purging needs `git filter-repo` plus a force-push, so it is an owner decision.
-- **No native Steam**: the arm64 client needs LSE atomics the SoC does not have.
-  The box64 + Hangover (non-Debian Wine) route is untested.
-- **Hardware video decode** is disabled: `gcc-sm6125` has no Venus clocks or
-  GDSCs, so `venus` cannot be enabled without adding them.
 
 ## Status and known limitations
 
