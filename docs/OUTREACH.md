@@ -76,3 +76,29 @@
   `docs/SPEAKERS-NEXT.md`) rather than pasting dumps.
 - For the SM6125 question specifically, ask for the *Duo Lite* configuration:
   "eliza" is the QCS8550 Duo and its files do not describe our board.
+
+## Ranked plan (advisor, 2026-10-31)
+
+1. **Extract from our own device first.** The Android vendor partition is still
+   mountable (offset 0xc5000000 of super) and holds what we need:
+   - /vendor/etc/acdbdata/QRD/*.acdb - the ADSP calibration Android applies
+     (Handset, Global, Headset, General, Bluetooth). This is where the speaker
+     loudness difference lives; mainline q6asm never loads ACDB.
+   - /vendor/etc/audio_platform_info.xml, mixer_paths*.xml - already pulled.
+   - The vendor device trees are already extracted in ~/android-images/`n     (endor_boot_a/dtb-01.dts has the real sound, venus and videocc nodes).
+2. **#linux-msm (OFTC) or linux-arm-msm** for the two SoC-level gaps: the
+   DMIC clock and the videocc GDSC that never leaves off. Ask with logs and
+   the downstream node values, as an RFC patch rather than a bare question.
+   SM6125 upstream came from SoMainline (Marijn Suijten, Martin Botka,
+   Lux Aliaga), so those names are the right audience.
+3. **ROCKNIX gets a real pull request**, not a question: add the Duo Lite device
+   to their tree in their own layout (DTS + minimal patches), one device per
+   PR, rebased, with a what-works/what-does-not table and a link here.
+4. **Retroid gets a GPL source request**, not a question: ask for the complete
+   corresponding source of the kernel in their firmware, including
+   techpack/audio-kernel and the device trees. That is an obligation, not a
+   favour. Do not open PRs against their mirror.
+5. Never open a PR that only contains a question.
+
+Speaker loudness does **not** go to mainline - it is vendor ADSP calibration.
+
