@@ -9,8 +9,9 @@ The kernel is our own build, **7.2.11-nf**: ROCKNIX's 79-patch SM6115 device ser
 the 7.2.11 stable tarball, with netfilter enabled so Tailscale runs in TUN mode. See
 [`docs/KERNEL.md`](docs/KERNEL.md) for how it is ported and verified.
 
-> **Finished hobby port.** It works as described below and is built for one
-> device. There is no active maintenance; current state and known limits are in
+> **Hobby project, maintained in bursts.** It works as described below and is
+> built for one device; I come back to it when time allows. Current state and
+> known limits are in
 > [`docs/STATE.md`](docs/STATE.md), and what would need help is in
 > [`docs/HELP-WANTED.md`](docs/HELP-WANTED.md).
 
