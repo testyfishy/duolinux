@@ -208,8 +208,11 @@ make            # needs wayland, pango/cairo, xkbcommon dev packages
 ## Licence
 
 - **This project's own code** (toolkit, scripts, overlays, docs, the Duo Lite scripts in
-  `out/remote/`, `out/device-config/`): **MIT**, see [`LICENSE`](LICENSE). Use it, change it,
-  sell it, ship it — no permission needed.
+  `out/remote/`, `out/device-config/`): **GPLv3**, see [`LICENSE`](LICENSE). Copyright (C) 2026
+  The DuoLinux authors. Use it, change it and share it; if you distribute a modified version,
+  share its source under GPLv3 too. Versions before 2026-11-09 were published under MIT and stay MIT.
+- **`kernel/patches/`** change the Linux kernel and stay **GPL-2.0**, like the kernel files they
+  patch (see the SPDX line in each patch).
 - **`out/wvkbd-0.15/`** is a modified copy of [wvkbd](https://git.sr.ht/~proycon/wvkbd),
   (c) 2020 John Sullivan and contributors, **GPLv3** (`LICENSE`, `COPYING`), with
   `os-compatibility.[ch]` under MIT/X (`COPYING_WESTON`). The changes are listed in
